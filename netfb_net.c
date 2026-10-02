@@ -44,6 +44,7 @@
 #define HTTP_RCV_TIMEOUT	(5 * HZ)
 #define HTTP_SND_TIMEOUT	(10 * HZ)
 #define ACCEPT_POLL		(HZ / 2)
+#define BUSY_GRACE_MS		300	/* wait this long for a hung-up client's slot */
 
 /* Linux 6.19 changed kernel_bind() to take struct sockaddr_unsized. */
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 19, 0)
@@ -712,6 +713,24 @@ static void spawn_conn(struct netfb_server *srv, struct socket *sock,
 	sock->sk->sk_sndtimeo = HTTP_SND_TIMEOUT;
 
 	mutex_lock(&srv->lock);
+	if (srv->nconns >= srv->cfg.max_clients) {
+		/*
+		 * A client that has just hung up keeps its slot until its thread
+		 * notices and the accept loop reaps it, which on a slow or busy
+		 * machine can take longer than a reconnecting client needs to come
+		 * back. Give those slots a moment to free up before turning a
+		 * newcomer away as busy.
+		 */
+		unsigned long grace = jiffies + msecs_to_jiffies(BUSY_GRACE_MS);
+
+		do {
+			mutex_unlock(&srv->lock);
+			msleep(10);
+			reap_conns(srv, false);
+			mutex_lock(&srv->lock);
+		} while (srv->nconns >= srv->cfg.max_clients &&
+			 time_before(jiffies, grace));
+	}
 	if (srv->nconns >= srv->cfg.max_clients) {
 		mutex_unlock(&srv->lock);
 		reject_busy(sock, proto);
