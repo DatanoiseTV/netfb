@@ -1,0 +1,519 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>netfb</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1114'/%3E%3Crect x='6' y='8' width='20' height='13' rx='2' fill='none' stroke='%235eead4' stroke-width='2'/%3E%3Cpath d='M12 25h8' stroke='%235eead4' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #0b0d10;
+  --bg-grid: rgba(255,255,255,.045);
+  --surface: #12151a;
+  --surface-2: #181c22;
+  --border: #252b33;
+  --border-strong: #343c47;
+  --text: #e6e9ee;
+  --text-dim: #8b94a1;
+  --accent: #5eead4;
+  --accent-ink: #04201c;
+  --live: #4ade80;
+  --warn: #fbbf24;
+  --bad: #f87171;
+  --shadow: 0 24px 60px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06);
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #eef0f3;
+    --bg-grid: rgba(0,0,0,.06);
+    --surface: #ffffff;
+    --surface-2: #f4f5f7;
+    --border: #dde1e7;
+    --border-strong: #c5cbd4;
+    --text: #14181d;
+    --text-dim: #5d6673;
+    --accent: #0f766e;
+    --accent-ink: #ffffff;
+    --live: #16a34a;
+    --warn: #b45309;
+    --bad: #dc2626;
+    --shadow: 0 20px 50px -14px rgba(20,30,50,.35), 0 0 0 1px rgba(0,0,0,.08);
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  display: flex; flex-direction: column;
+  background: var(--bg); color: var(--text);
+  font: 14px/1.4 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ---- top bar ---- */
+header {
+  flex: none; display: flex; align-items: center; gap: 12px;
+  height: 52px; padding: 0 max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: .01em; }
+.brand svg { color: var(--accent); }
+.status {
+  display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 11px 0 9px;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2);
+  font-size: 12px; color: var(--text-dim); white-space: nowrap;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
+.status[data-state=live] .dot { background: var(--live); box-shadow: 0 0 0 0 var(--live); animation: pulse 2.2s ease-out infinite; }
+.status[data-state=live] { color: var(--text); }
+.status[data-state=paused] .dot { background: var(--warn); }
+.status[data-state=offline] .dot { background: var(--bad); }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+.spacer { flex: 1; }
+.controls { display: flex; align-items: center; gap: 6px; }
+.sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+
+button, select {
+  font: inherit; color: var(--text); cursor: pointer;
+  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
+  height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px;
+  transition: background .12s, border-color .12s, transform .06s;
+}
+button:hover, select:hover { background: color-mix(in srgb, var(--surface-2) 70%, var(--text) 8%); border-color: var(--border-strong); }
+button:active { transform: translateY(1px); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+button svg { flex: none; }
+button[aria-pressed=true] { background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+button:disabled { opacity: .45; cursor: default; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-2); }
+.seg button { border: 0; border-radius: 0; height: 30px; background: transparent; padding: 0 11px; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button[aria-pressed=true] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); }
+select { padding-right: 6px; }
+
+/* ---- stage ---- */
+main {
+  position: relative; flex: 1; min-height: 0; overflow: auto;
+  display: grid; place-items: center; padding: 28px;
+  background:
+    radial-gradient(ellipse at 50% 38%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 62%),
+    radial-gradient(circle, var(--bg-grid) 1px, transparent 1.2px) 0 0 / 22px 22px,
+    var(--bg);
+}
+main:fullscreen { padding: 0; background: #000; }
+main:fullscreen #screen { box-shadow: none; border-radius: 0; }
+#screen {
+  display: block; background: #000; border-radius: 6px; box-shadow: var(--shadow);
+  transition: filter .25s, opacity .25s;
+}
+#screen.stale { filter: grayscale(.85) brightness(.6); }
+.overlay {
+  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
+  opacity: 0; transition: opacity .2s;
+}
+.overlay.show { opacity: 1; }
+.overlay .card {
+  display: flex; align-items: center; gap: 12px; padding: 12px 18px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--border);
+  border-radius: 12px; backdrop-filter: blur(8px); box-shadow: var(--shadow);
+}
+.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---- stats bar ---- */
+footer {
+  flex: none; display: flex; align-items: center; gap: 18px; min-height: 34px; padding: 0 16px;
+  background: var(--surface); border-top: 1px solid var(--border);
+  font: 12px/1 var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums;
+}
+footer b { color: var(--text); font-weight: 500; }
+footer .hint { margin-left: auto; font-family: var(--sans); }
+kbd { font: 11px var(--mono); padding: 2px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; color: var(--text); }
+
+/* ---- token dialog ---- */
+dialog {
+  width: min(380px, calc(100vw - 32px)); padding: 22px; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow);
+}
+dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
+dialog h2 { margin: 0 0 4px; font-size: 16px; }
+dialog p { margin: 0 0 14px; color: var(--text-dim); }
+dialog input {
+  width: 100%; height: 38px; padding: 0 12px; font: 13px var(--mono); color: var(--text);
+  background: var(--bg); border: 1px solid var(--border-strong); border-radius: 8px;
+}
+dialog .err { min-height: 18px; margin: 6px 0 0; color: var(--bad); font-size: 12px; }
+dialog .row { display: flex; justify-content: flex-end; margin-top: 10px; }
+dialog button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+dialog button.primary:hover { filter: brightness(1.08); background: var(--accent); }
+
+/* ---- small screens ---- */
+@media (max-width: 760px) {
+  header { gap: 8px; }
+  .lbl, footer .hint, .brand span { display: none; }
+  button { padding: 0 9px; }
+  main { padding: 10px; }
+  .sep { display: none; }
+}
+@media (max-width: 480px) { #fmt, #total { display: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .dot, .spinner { animation: none !important; }
+  * { transition: none !important; }
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 11l2-2 2.5 3L14 8l3 3" stroke-width="1.5"/></svg>
+    <span>netfb</span>
+  </div>
+  <div class="status" id="status" data-state="connecting" role="status" aria-live="polite">
+    <i class="dot"></i><span id="statusText">Connecting</span>
+  </div>
+  <div class="spacer"></div>
+  <div class="controls">
+    <div class="seg" role="group" aria-label="Scaling">
+      <button id="sFit" type="button" aria-pressed="true" title="Fit to window (1)">Fit</button>
+      <button id="s1x" type="button" aria-pressed="false" title="One framebuffer pixel per device pixel (2)">1:1</button>
+      <button id="s2x" type="button" aria-pressed="false" title="Double size (3)">2×</button>
+    </div>
+    <button id="sharp" type="button" aria-pressed="true" title="Crisp pixels when enlarged (P)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h6v6h-6z"/></svg><span class="lbl">Crisp</span>
+    </button>
+    <select id="fps" aria-label="Maximum update rate" title="Maximum update rate"></select>
+    <span class="sep"></span>
+    <button id="pause" type="button" aria-label="Pause" title="Pause / resume (Space)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="pauseIcon" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg><span class="lbl" id="pauseLbl">Pause</span>
+    </button>
+    <button id="refresh" type="button" aria-label="Full refresh" title="Request a full frame (R)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7"/></svg><span class="lbl">Refresh</span>
+    </button>
+    <button id="shot" type="button" aria-label="Save screenshot" title="Save screenshot (S)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lbl">Screenshot</span>
+    </button>
+    <button id="full" type="button" aria-label="Fullscreen" title="Fullscreen (F)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="lbl">Fullscreen</span>
+    </button>
+  </div>
+</header>
+
+<main id="stage">
+  <canvas id="screen" width="640" height="400" aria-label="Remote framebuffer"></canvas>
+  <div class="overlay" id="overlay"><div class="card"><i class="spinner"></i><span id="overlayText">Connecting…</span></div></div>
+</main>
+
+<footer>
+  <span id="fmt">—</span>
+  <span><b id="fpsNow">0</b> fps</span>
+  <span><b id="rate">0 B/s</b></span>
+  <span id="total">0 B received</span>
+  <span class="hint"><kbd>Space</kbd> pause &nbsp;<kbd>F</kbd> fullscreen &nbsp;<kbd>S</kbd> screenshot</span>
+</footer>
+
+<dialog id="auth">
+  <form method="dialog" id="authForm">
+    <h2>Access token required</h2>
+    <p>This framebuffer is protected. Enter the token that was passed to the kernel module.</p>
+    <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" aria-label="Access token" required>
+    <p class="err" id="authErr" role="alert"></p>
+    <div class="row"><button class="primary" type="submit">Connect</button></div>
+  </form>
+</dialog>
+
+<script>
+"use strict";
+(() => {
+const $ = (id) => document.getElementById(id);
+const canvas = $("screen"), ctx = canvas.getContext("2d", { alpha: false });
+const stage = $("stage");
+
+// Persisted view preferences; storage can be unavailable (private mode).
+const store = {
+  get(k, d) { try { const v = localStorage.getItem("netfb." + k); return v === null ? d : v; } catch { return d; } },
+  set(k, v) { try { localStorage.setItem("netfb." + k, v); } catch { /* ignore */ } },
+};
+
+const S = {
+  token: null, info: null, ws: null, paused: false, closing: false,
+  scale: store.get("scale", "fit"), sharp: store.get("sharp", "1") === "1",
+  fps: parseInt(store.get("fps", "30"), 10) || 30,
+  retry: 0, timer: 0, tick: 0,
+  img: null, dst: null, decode: null,
+  dirtyMin: Infinity, dirtyMax: -1, raf: 0,
+  frames: 0, bytes: 0, total: 0,
+};
+
+// ---- token ---------------------------------------------------------------
+function initToken() {
+  const q = new URLSearchParams(location.search);
+  const t = q.get("token");
+  if (t) {
+    try { sessionStorage.setItem("netfb.token", t); } catch { /* ignore */ }
+    q.delete("token");
+    const rest = q.toString();
+    history.replaceState(null, "", location.pathname + (rest ? "?" + rest : "") + location.hash);
+    return t;
+  }
+  try { return sessionStorage.getItem("netfb.token"); } catch { return null; }
+}
+
+// ---- status --------------------------------------------------------------
+function setStatus(state, text, overlay) {
+  $("status").dataset.state = state;
+  $("statusText").textContent = text;
+  const show = overlay !== undefined;
+  $("overlay").classList.toggle("show", show);
+  if (show) $("overlayText").textContent = overlay;
+  canvas.classList.toggle("stale", state === "offline");
+  $("overlay").querySelector(".spinner").style.display = state === "offline" || state === "connecting" ? "" : "none";
+}
+
+function fmtBytes(n) {
+  if (n < 1024) return n.toFixed(0) + " B";
+  if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
+  if (n < 1073741824) return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
+  return (n / 1073741824).toFixed(2) + " GB";
+}
+
+// ---- framebuffer format --------------------------------------------------
+function expand(v, len) { return len >= 8 ? v >> (len - 8) : (v << (8 - len)) | (v >> (2 * len - 8)); }
+
+function makeDecoder(info) {
+  const W = info.width, [ro, rl] = info.red, [go, gl] = info.green, [bo, bl] = info.blue;
+  const dst = S.dst;
+  if (info.bpp === 32) {
+    const rm = (1 << rl) - 1, gm = (1 << gl) - 1, bm = (1 << bl) - 1;
+    const rs = 8 - Math.min(rl, 8), gs = 8 - Math.min(gl, 8), bs = 8 - Math.min(bl, 8);
+    return (buf, y, h) => {
+      const src = new Uint32Array(buf, 8, h * W);
+      for (let i = 0, o = y * W; i < src.length; i++, o++) {
+        const v = src[i];
+        dst[o] = 0xff000000 | ((((v >>> bo) & bm) << bs) << 16) | ((((v >>> go) & gm) << gs) << 8) | (((v >>> ro) & rm) << rs);
+      }
+    };
+  }
+  // 16 bpp: per-channel lookup tables to 8 bit
+  const lr = new Uint8Array(1 << rl), lg = new Uint8Array(1 << gl), lb = new Uint8Array(1 << bl);
+  for (let i = 0; i < lr.length; i++) lr[i] = expand(i, rl);
+  for (let i = 0; i < lg.length; i++) lg[i] = expand(i, gl);
+  for (let i = 0; i < lb.length; i++) lb[i] = expand(i, bl);
+  const rm = lr.length - 1, gm = lg.length - 1, bm = lb.length - 1;
+  return (buf, y, h) => {
+    const src = new Uint16Array(buf, 8, h * W);
+    for (let i = 0, o = y * W; i < src.length; i++, o++) {
+      const v = src[i];
+      dst[o] = 0xff000000 | (lb[(v >>> bo) & bm] << 16) | (lg[(v >>> go) & gm] << 8) | lr[(v >>> ro) & rm];
+    }
+  };
+}
+
+function applyInfo(info) {
+  const same = S.info && S.info.width === info.width && S.info.height === info.height && S.info.bpp === info.bpp;
+  S.info = info;
+  if (!same) {
+    canvas.width = info.width; canvas.height = info.height;
+    S.img = ctx.createImageData(info.width, info.height);
+    S.dst = new Uint32Array(S.img.data.buffer);
+    S.dst.fill(0xff000000);
+    ctx.putImageData(S.img, 0, 0);
+  }
+  S.decode = makeDecoder(info);
+  $("fmt").innerHTML = `<b>${info.width}×${info.height}</b> ${info.bpp === 16 ? "RGB565" : "XRGB8888"}`;
+  buildFpsOptions(info.max_fps);
+  layout();
+}
+
+// ---- rendering -----------------------------------------------------------
+function flush() {
+  S.raf = 0;
+  if (S.dirtyMax < S.dirtyMin) return;
+  const y = S.dirtyMin, h = S.dirtyMax - y + 1;
+  ctx.putImageData(S.img, 0, 0, 0, y, S.info.width, h);
+  S.dirtyMin = Infinity; S.dirtyMax = -1;
+  S.frames++;
+}
+
+function onPixels(buf) {
+  const info = S.info;
+  if (!info || buf.byteLength < 8) return;
+  const dv = new DataView(buf);
+  if (dv.getUint8(0) !== 1) return;
+  const y = dv.getUint16(2, true), h = dv.getUint16(4, true);
+  if (!h || y + h > info.height || buf.byteLength !== 8 + h * info.stride) return;
+  S.decode(buf, y, h);
+  if (y < S.dirtyMin) S.dirtyMin = y;
+  if (y + h - 1 > S.dirtyMax) S.dirtyMax = y + h - 1;
+  if (!S.raf) S.raf = requestAnimationFrame(flush);
+}
+
+function layout() {
+  if (!S.info) return;
+  const W = S.info.width, H = S.info.height, dpr = window.devicePixelRatio || 1;
+  let k;
+  if (S.scale === "fit") {
+    const cs = getComputedStyle(stage), full = document.fullscreenElement === stage;
+    const aw = stage.clientWidth - (full ? 0 : parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight));
+    const ah = stage.clientHeight - (full ? 0 : parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom));
+    k = Math.max(0.05, Math.min(aw / W, ah / H));
+  } else {
+    k = (S.scale === "2x" ? 2 : 1) / dpr;
+  }
+  canvas.style.width = Math.floor(W * k) + "px";
+  canvas.style.height = Math.floor(H * k) + "px";
+  canvas.style.imageRendering = S.sharp && k * dpr >= 1 ? "pixelated" : "auto";
+}
+
+// ---- connection ----------------------------------------------------------
+function send(cmd) { if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(cmd); }
+
+function scheduleReconnect() {
+  clearTimeout(S.timer);
+  const delay = Math.min(8, 1 + S.retry++) * 1000;
+  let left = delay / 1000;
+  const tick = () => {
+    setStatus("offline", "Offline", `Disconnected — retrying in ${left}s`);
+    if (left-- > 0) S.timer = setTimeout(tick, 1000); else connect();
+  };
+  tick();
+}
+
+async function connect() {
+  clearTimeout(S.timer);
+  setStatus("connecting", "Connecting", S.info ? "Reconnecting…" : "Connecting…");
+  let res;
+  try {
+    res = await fetch("/api/info", { cache: "no-store", headers: S.token ? { Authorization: "Bearer " + S.token } : {} });
+  } catch { return scheduleReconnect(); }
+  if (res.status === 401) return askToken(S.token ? "That token was rejected." : "");
+  if (!res.ok) return scheduleReconnect();
+  try { applyInfo(await res.json()); } catch { return scheduleReconnect(); }
+  openSocket();
+}
+
+function openSocket() {
+  const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws" +
+              (S.token ? "?token=" + encodeURIComponent(S.token) : "");
+  const ws = new WebSocket(url);
+  ws.binaryType = "arraybuffer";
+  S.ws = ws;
+  ws.onopen = () => {
+    S.retry = 0;
+    send("fps " + S.fps);
+    if (S.paused) send("pause");
+    setPausedUi();
+  };
+  ws.onmessage = (ev) => {
+    if (typeof ev.data === "string") {
+      try { const m = JSON.parse(ev.data); if (m.type === "info") applyInfo(m); } catch { /* ignore */ }
+      return;
+    }
+    S.bytes += ev.data.byteLength; S.total += ev.data.byteLength;
+    onPixels(ev.data);
+  };
+  ws.onclose = () => { if (S.ws === ws) { S.ws = null; scheduleReconnect(); } };
+  ws.onerror = () => ws.close();
+}
+
+function askToken(err) {
+  setStatus("offline", "Locked", undefined);
+  $("authErr").textContent = err || "";
+  const d = $("auth");
+  if (!d.open) d.showModal();
+  $("tokenInput").value = "";
+  $("tokenInput").focus();
+}
+
+$("authForm").addEventListener("submit", () => {
+  S.token = $("tokenInput").value.trim();
+  try { sessionStorage.setItem("netfb.token", S.token); } catch { /* ignore */ }
+  connect();
+});
+
+// ---- controls ------------------------------------------------------------
+function setPausedUi() {
+  const p = S.paused;
+  $("pauseLbl").textContent = p ? "Resume" : "Pause";
+  $("pause").setAttribute("aria-label", p ? "Resume" : "Pause");
+  $("pauseIcon").setAttribute("d", p ? "M7 4.5v15l12-7.5z" : "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z");
+  if (S.ws && S.ws.readyState === WebSocket.OPEN) setStatus(p ? "paused" : "live", p ? "Paused" : "Live");
+}
+
+function togglePause() { S.paused = !S.paused; send(S.paused ? "pause" : "resume"); setPausedUi(); }
+
+function setScale(s) {
+  S.scale = s; store.set("scale", s);
+  for (const [id, v] of [["sFit", "fit"], ["s1x", "1x"], ["s2x", "2x"]]) $(id).setAttribute("aria-pressed", String(v === s));
+  layout();
+}
+
+function setSharp(v) { S.sharp = v; store.set("sharp", v ? "1" : "0"); $("sharp").setAttribute("aria-pressed", String(v)); layout(); }
+
+function buildFpsOptions(max) {
+  const sel = $("fps"), opts = [...new Set([5, 10, 15, 24, 30, 60, 120].filter((n) => n < max).concat(max))];
+  sel.replaceChildren(...opts.map((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n + " fps max"; return o; }));
+  S.fps = Math.min(S.fps, max);
+  sel.value = opts.includes(S.fps) ? S.fps : max;
+}
+
+function screenshot() {
+  canvas.toBlob((blob) => {
+    if (!blob) return;
+    const a = document.createElement("a"), d = new Date(), p = (n) => String(n).padStart(2, "0");
+    a.href = URL.createObjectURL(blob);
+    a.download = `netfb-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }, "image/png");
+}
+
+function fullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (stage.requestFullscreen) stage.requestFullscreen();
+}
+
+$("sFit").onclick = () => setScale("fit");
+$("s1x").onclick = () => setScale("1x");
+$("s2x").onclick = () => setScale("2x");
+$("sharp").onclick = () => setSharp(!S.sharp);
+$("pause").onclick = togglePause;
+$("refresh").onclick = () => send("full");
+$("shot").onclick = screenshot;
+$("full").onclick = fullscreen;
+$("fps").onchange = (e) => { S.fps = parseInt(e.target.value, 10); store.set("fps", S.fps); send("fps " + S.fps); };
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || $("auth").open) return;
+  if (e.target instanceof HTMLSelectElement) return;
+  const k = e.key.toLowerCase();
+  const act = { " ": togglePause, f: fullscreen, s: screenshot, r: () => send("full"), p: () => setSharp(!S.sharp),
+                1: () => setScale("fit"), 2: () => setScale("1x"), 3: () => setScale("2x") }[k];
+  if (act) { e.preventDefault(); act(); }
+});
+
+new ResizeObserver(layout).observe(stage);
+document.addEventListener("fullscreenchange", layout);
+
+// ---- stats ---------------------------------------------------------------
+setInterval(() => {
+  $("fpsNow").textContent = S.frames; S.frames = 0;
+  $("rate").textContent = fmtBytes(S.bytes) + "/s"; S.bytes = 0;
+  $("total").textContent = fmtBytes(S.total) + " received";
+}, 1000);
+
+// ---- boot ----------------------------------------------------------------
+S.token = initToken();
+setScale(S.scale); setSharp(S.sharp);
+connect();
+})();
+</script>
+</body>
+</html>
