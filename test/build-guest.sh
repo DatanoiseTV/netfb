@@ -21,6 +21,7 @@ cp /bin/busybox bin/busybox
 cp /tmp/mod/netfb.ko netfb.ko
 gcc -O2 -Wall -static -o fbtest /src/test/guest/fbtest.c
 cp /src/test/guest/init init
+cp /src/test/guest/init-demo init-demo
 find . | cpio -o -H newc --quiet | gzip -9 > /out/initramfs.cpio.gz
 cp $K/arch/arm64/boot/Image /out/Image
 ls -la /out

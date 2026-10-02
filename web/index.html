@@ -419,6 +419,7 @@ function setCapture(on) {
 }
 
 $("kbd").onclick = () => setCapture(!S.capture);
+canvas.addEventListener("click", () => { if (!S.capture) setCapture(true); });
 window.addEventListener("keydown", (e) => keyEvent(e, true), true);
 window.addEventListener("keyup", (e) => keyEvent(e, false), true);
 window.addEventListener("blur", releaseKeys);

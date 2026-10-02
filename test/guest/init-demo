@@ -1,0 +1,27 @@
+#!/bin/busybox sh
+# Demo VM: netfb at 800x600 carrying the Linux console, with a root shell on it.
+# Keystrokes from the browser arrive through the netfb input device.
+/bin/busybox mkdir -p /proc /sys /dev /sbin /usr/bin /usr/sbin /root /tmp
+/bin/busybox --install -s
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+ifconfig lo up
+ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up
+route add default gw 10.0.2.2
+
+insmod /netfb.ko width=800 height=600 bpp=32 bind_addr=0.0.0.0 \
+    token=test-token-0123456789abcdef keyboard=1 max_fps=60 max_clients=4 || echo INSMOD_FAILED
+export HOME=/root TERM=linux PATH=/bin:/sbin:/usr/bin:/usr/sbin
+export PS1='root@netfb:\w# '
+{
+    echo "netfb demo: this console is /dev/fb0, streamed to your browser."
+    echo "Logged in as root. Try: uname -a, ls /sys/class/graphics/fb0, dmesg | tail"
+    echo
+} > /dev/tty0
+# getty opens tty0 itself and makes it the controlling terminal. (busybox cttyhack
+# ignores the redirections and attaches to /dev/console, which is the serial port.)
+# Respawn so that "exit" in the shell does not take PID 1 down.
+while true; do
+    getty -n -l /bin/sh 115200 tty0 linux
+done
