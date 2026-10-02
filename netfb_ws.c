@@ -31,7 +31,7 @@
 #define MERGE_GAP	8
 #define WAIT_MS		200
 #define RX_BUF		256
-#define WS_HDR_LEN	4	/* every pixel message uses the 16 bit length form */
+#define WS_HDR_LEN	4	/* room for the 16 bit length form in front of a message */
 
 #define WS_OP_CONT	0x0
 #define WS_OP_TEXT	0x1
@@ -95,7 +95,8 @@ static int ws_send_rows(struct ws *w, u32 y, u32 h)
 	const u8 *src = nf->vmem + (size_t)y * nf->rowbytes;
 	size_t raw = (size_t)h * nf->rowbytes;
 	size_t plen = NETFB_MSG_HDR_LEN;
-	u8 flags = 0;
+	u8 flags = 0, *frame;
+	size_t hl;
 	int clen;
 
 	/*
@@ -113,9 +114,22 @@ static int ws_send_rows(struct ws *w, u32 y, u32 h)
 		plen += raw;
 	}
 
-	w->tx[0] = 0x80 | WS_OP_BIN;
-	w->tx[1] = 126;
-	put_unaligned_be16(plen, w->tx + 2);
+	/*
+	 * RFC 6455 5.2 requires the minimal length encoding and browsers reject
+	 * anything else. The message always starts at tx + WS_HDR_LEN, so a short
+	 * (well compressed) payload gets its 2 byte header right-aligned to it.
+	 */
+	if (plen < 126) {
+		frame = w->tx + WS_HDR_LEN - 2;
+		frame[1] = plen;
+		hl = 2;
+	} else {
+		frame = w->tx;
+		frame[1] = 126;
+		put_unaligned_be16(plen, frame + 2);
+		hl = WS_HDR_LEN;
+	}
+	frame[0] = 0x80 | WS_OP_BIN;
 
 	msg[0] = NETFB_MSG_PIXELS;
 	msg[1] = flags;
@@ -123,7 +137,7 @@ static int ws_send_rows(struct ws *w, u32 y, u32 h)
 	put_unaligned_le16(h, msg + 4);
 	put_unaligned_le16(0, msg + 6);
 
-	return netfb_send_all(w->c->sock, w->tx, WS_HDR_LEN + plen);
+	return netfb_send_all(w->c->sock, frame, hl + plen);
 }
 
 /* Send every row whose version is newer than w->last, in bounded chunks. */

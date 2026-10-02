@@ -192,6 +192,10 @@ class WS:
             if not self._need(4, deadline):
                 return None
             n, hl = struct.unpack(">H", self.buf[2:4])[0], 4
+            # RFC 6455 5.2: the minimal length encoding must be used. Browsers
+            # drop the connection ("Invalid frame header") when it is not.
+            if n < 126:
+                raise ValueError(f"non-minimal 16 bit length {n}")
         elif n == 127:
             raise ValueError("64 bit length from server")
         if not self._need(hl + n, deadline):

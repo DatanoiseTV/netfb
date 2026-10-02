@@ -11,7 +11,7 @@ ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up
 route add default gw 10.0.2.2
 
 insmod /netfb.ko width=800 height=600 bpp=32 bind_addr=0.0.0.0 \
-    token=test-token-0123456789abcdef keyboard=1 max_fps=60 max_clients=4 || echo INSMOD_FAILED
+    token=test-token-0123456789abcdef keyboard=1 max_fps=60 max_clients=16 || echo INSMOD_FAILED
 export HOME=/root TERM=linux PATH=/bin:/sbin:/usr/bin:/usr/sbin
 export PS1='root@netfb:\w# '
 {

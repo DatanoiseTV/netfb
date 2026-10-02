@@ -464,12 +464,12 @@ window.addEventListener("blur", releaseKeys);
 // ---- connection ----------------------------------------------------------
 function send(cmd) { if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(cmd); }
 
-function scheduleReconnect() {
+function scheduleReconnect(why) {
   clearTimeout(S.timer);
   const delay = Math.min(8, 1 + S.retry++) * 1000;
   let left = delay / 1000;
   const tick = () => {
-    setStatus("offline", "Offline", `Disconnected — retrying in ${left}s`);
+    setStatus("offline", "Offline", `${why || "Disconnected"} — retrying in ${left}s`);
     if (left-- > 0) S.timer = setTimeout(tick, 1000); else connect();
   };
   tick();
@@ -483,6 +483,7 @@ async function connect() {
     res = await fetch("/api/info", { cache: "no-store", headers: S.token ? { Authorization: "Bearer " + S.token } : {} });
   } catch { return scheduleReconnect(); }
   if (res.status === 401) return askToken(S.token ? "That token was rejected." : "");
+  if (res.status === 503) return scheduleReconnect("Server is full: too many viewers (close other tabs)");
   if (!res.ok) return scheduleReconnect();
   try { applyInfo(await res.json()); } catch { return scheduleReconnect(); }
   openSocket();
