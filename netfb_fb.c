@@ -12,6 +12,7 @@
 
 #include <linux/fb.h>
 #include <linux/inet.h>
+#include <linux/input.h>
 #include <linux/in.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -56,6 +57,10 @@ MODULE_PARM_DESC(max_clients, "Maximum concurrent connections, 1-64 (default 8)"
 static unsigned int max_fps = 30;
 module_param(max_fps, uint, 0444);
 MODULE_PARM_DESC(max_fps, "Maximum update rate per client, 1-120 (default 30)");
+
+static bool keyboard;
+module_param(keyboard, bool, 0444);
+MODULE_PARM_DESC(keyboard, "Create an input device and accept key events from the web UI (default off: this is remote console access)");
 
 static struct netfb *netfb_dev;
 static struct platform_device *netfb_pdev;
@@ -114,6 +119,44 @@ static struct fb_deferred_io netfb_defio = {
 	.delay		= HZ / 60 ? HZ / 60 : 1,
 	.deferred_io	= netfb_deferred_io,
 };
+
+/* ---- keyboard ----------------------------------------------------------- */
+
+void netfb_key(struct netfb *nf, unsigned int code, bool down)
+{
+	if (!nf->kbd || code == 0 || code >= NETFB_MAX_KEYCODE)
+		return;
+	input_report_key(nf->kbd, code, down);
+	input_sync(nf->kbd);
+}
+
+static int netfb_kbd_register(struct netfb *nf)
+{
+	struct input_dev *in = input_allocate_device();
+	unsigned int i;
+	int ret;
+
+	if (!in)
+		return -ENOMEM;
+	in->name = "netfb virtual keyboard";
+	in->phys = "netfb/input0";
+	in->id.bustype = BUS_VIRTUAL;
+	in->dev.parent = &netfb_pdev->dev;
+	__set_bit(EV_KEY, in->evbit);
+	__set_bit(EV_REP, in->evbit);
+	for (i = KEY_ESC; i < NETFB_MAX_KEYCODE; i++) {
+		/* Keyboard keys only: no BTN_* so it is not taken for a mouse. */
+		if (i < BTN_MISC || i > KEY_OK)
+			__set_bit(i, in->keybit);
+	}
+	ret = input_register_device(in);
+	if (ret) {
+		input_free_device(in);
+		return ret;
+	}
+	nf->kbd = in;
+	return 0;
+}
 
 /* ---- fb_ops ------------------------------------------------------------- */
 
@@ -315,16 +358,26 @@ static int __init netfb_init(void)
 	if (ret < 0)
 		goto err_defio;
 
+	if (keyboard) {
+		ret = netfb_kbd_register(nf);
+		if (ret)
+			goto err_unreg;
+	}
+
 	ret = netfb_net_start(nf, &cfg);
 	if (ret)
-		goto err_unreg;
+		goto err_kbd;
 
 	netfb_dev = nf;
-	pr_info("fb%d: %ux%u@%u, serving on http://%pI4:%u/%s\n", info->node,
+	pr_info("fb%d: %ux%u@%u, serving on http://%pI4:%u/%s%s\n", info->node,
 		width, height, bpp, &cfg.addr, cfg.port,
-		cfg.token ? " (token required)" : "");
+		cfg.token ? " (token required)" : "",
+		nf->kbd ? " keyboard input ENABLED" : "");
 	return 0;
 
+err_kbd:
+	if (nf->kbd)
+		input_unregister_device(nf->kbd);
 err_unreg:
 	unregister_framebuffer(info);
 err_defio:
@@ -347,6 +400,8 @@ static void __exit netfb_exit(void)
 
 	/* No connection may touch the framebuffer once it is torn down. */
 	netfb_net_stop(nf);
+	if (nf->kbd)
+		input_unregister_device(nf->kbd);
 	unregister_framebuffer(info);
 	fb_deferred_io_cleanup(info);
 	framebuffer_release(info);

@@ -113,6 +113,8 @@ main:fullscreen #screen { box-shadow: none; border-radius: 0; }
   display: block; background: #000; border-radius: 6px; box-shadow: var(--shadow);
   transition: filter .25s, opacity .25s;
 }
+#screen.capture { outline: 2px solid var(--accent); outline-offset: 3px; }
+button[hidden] { display: none; }
 #screen.stale { filter: grayscale(.85) brightness(.6); }
 .overlay {
   position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
@@ -200,6 +202,9 @@ dialog button.primary:hover { filter: brightness(1.08); background: var(--accent
     <button id="shot" type="button" aria-label="Save screenshot" title="Save screenshot (S)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lbl">Screenshot</span>
     </button>
+    <button id="kbd" type="button" aria-pressed="false" hidden title="Send keyboard input to the machine (Ctrl+Alt+K)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span class="lbl">Keyboard</span>
+    </button>
     <button id="full" type="button" aria-label="Fullscreen" title="Fullscreen (F)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="lbl">Fullscreen</span>
     </button>
@@ -216,7 +221,7 @@ dialog button.primary:hover { filter: brightness(1.08); background: var(--accent
   <span><b id="fpsNow">0</b> fps</span>
   <span><b id="rate">0 B/s</b></span>
   <span id="total">0 B received</span>
-  <span class="hint"><kbd>Space</kbd> pause &nbsp;<kbd>F</kbd> fullscreen &nbsp;<kbd>S</kbd> screenshot</span>
+  <span class="hint"><kbd>Space</kbd> pause &nbsp;<kbd>F</kbd> fullscreen &nbsp;<kbd>S</kbd> screenshot &nbsp;<kbd>Ctrl+Alt+K</kbd> keyboard</span>
 </footer>
 
 <dialog id="auth">
@@ -246,7 +251,7 @@ const S = {
   token: null, info: null, ws: null, paused: false, closing: false,
   scale: store.get("scale", "fit"), sharp: store.get("sharp", "1") === "1",
   fps: parseInt(store.get("fps", "30"), 10) || 30,
-  retry: 0, timer: 0, tick: 0,
+  retry: 0, timer: 0, tick: 0, capture: false, held: new Set(),
   img: null, dst: null, decode: null,
   dirtyMin: Infinity, dirtyMax: -1, raf: 0,
   frames: 0, bytes: 0, total: 0,
@@ -329,6 +334,8 @@ function applyInfo(info) {
   S.decode = makeDecoder(info);
   $("fmt").innerHTML = `<b>${info.width}×${info.height}</b> ${info.bpp === 16 ? "RGB565" : "XRGB8888"}`;
   buildFpsOptions(info.max_fps);
+  $("kbd").hidden = !info.keyboard;
+  if (!info.keyboard) setCapture(false);
   layout();
 }
 
@@ -371,6 +378,50 @@ function layout() {
   canvas.style.height = Math.floor(H * k) + "px";
   canvas.style.imageRendering = S.sharp && k * dpr >= 1 ? "pixelated" : "auto";
 }
+
+// ---- keyboard ------------------------------------------------------------
+// KeyboardEvent.code -> Linux input-event-codes.h (physical keys, layout-independent;
+// the guest applies its own keymap).
+const KEYS = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27,
+  Enter: 28, ControlLeft: 29, Semicolon: 39, Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43,
+  Comma: 51, Period: 52, Slash: 53, ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57, CapsLock: 58,
+  NumLock: 69, ScrollLock: 70, NumpadSubtract: 74, NumpadAdd: 78, NumpadDecimal: 83, IntlBackslash: 86,
+  NumpadEnter: 96, ControlRight: 97, NumpadDivide: 98, PrintScreen: 99, AltRight: 100, Home: 102,
+  ArrowUp: 103, PageUp: 104, ArrowLeft: 105, ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109,
+  Insert: 110, Delete: 111, Pause: 119, MetaLeft: 125, MetaRight: 126, ContextMenu: 127 };
+"1234567890".split("").forEach((c, i) => { KEYS["Digit" + c] = 2 + i; });
+"QWERTYUIOP".split("").forEach((c, i) => { KEYS["Key" + c] = 16 + i; });
+"ASDFGHJKL".split("").forEach((c, i) => { KEYS["Key" + c] = 30 + i; });
+"ZXCVBNM".split("").forEach((c, i) => { KEYS["Key" + c] = 44 + i; });
+for (let i = 1; i <= 10; i++) KEYS["F" + i] = 58 + i;
+KEYS.F11 = 87; KEYS.F12 = 88;
+[82, 79, 80, 81, 75, 76, 77, 71, 72, 73].forEach((c, i) => { KEYS["Numpad" + i] = c; });
+
+function keyEvent(e, down) {
+  if (!S.capture) return;
+  if (down && e.ctrlKey && e.altKey && e.code === "KeyK") { e.preventDefault(); setCapture(false); return; }
+  const code = KEYS[e.code];
+  if (!code) return;
+  e.preventDefault(); e.stopPropagation();
+  if (down && e.repeat) return;          // the guest's input core generates auto-repeat
+  if (down) S.held.add(code); else S.held.delete(code);
+  send(`key ${code} ${down ? 1 : 0}`);
+}
+
+function releaseKeys() { for (const c of S.held) send(`key ${c} 0`); S.held.clear(); }
+
+function setCapture(on) {
+  if (on && !(S.info && S.info.keyboard)) return;
+  if (!on) releaseKeys();
+  S.capture = on;
+  $("kbd").setAttribute("aria-pressed", String(on));
+  canvas.classList.toggle("capture", on);
+}
+
+$("kbd").onclick = () => setCapture(!S.capture);
+window.addEventListener("keydown", (e) => keyEvent(e, true), true);
+window.addEventListener("keyup", (e) => keyEvent(e, false), true);
+window.addEventListener("blur", releaseKeys);
 
 // ---- connection ----------------------------------------------------------
 function send(cmd) { if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(cmd); }
@@ -419,7 +470,7 @@ function openSocket() {
     S.bytes += ev.data.byteLength; S.total += ev.data.byteLength;
     onPixels(ev.data);
   };
-  ws.onclose = () => { if (S.ws === ws) { S.ws = null; scheduleReconnect(); } };
+  ws.onclose = () => { if (S.ws === ws) { S.ws = null; S.held.clear(); scheduleReconnect(); } };
   ws.onerror = () => ws.close();
 }
 
@@ -491,7 +542,7 @@ $("full").onclick = fullscreen;
 $("fps").onchange = (e) => { S.fps = parseInt(e.target.value, 10); store.set("fps", S.fps); send("fps " + S.fps); };
 
 document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || $("auth").open) return;
+  if (e.ctrlKey || e.metaKey || e.altKey || S.capture || $("auth").open) return;
   if (e.target instanceof HTMLSelectElement) return;
   const k = e.key.toLowerCase();
   const act = { " ": togglePause, f: fullscreen, s: screenshot, r: () => send("full"), p: () => setSharp(!S.sharp),

@@ -49,6 +49,7 @@ struct ws {
 	bool paused;
 	unsigned long interval;	/* min jiffies between updates */
 	unsigned int fps_cap;
+	DECLARE_BITMAP(keys, NETFB_MAX_KEYCODE);	/* keys this client holds down */
 };
 
 /* ---- sending ------------------------------------------------------------ */
@@ -150,7 +151,7 @@ static void ws_set_interval(struct ws *w, unsigned int fps)
 	w->interval = max(1ul, msecs_to_jiffies(1000 / w->fps_cap));
 }
 
-/* Text commands from the UI: "pause", "resume", "full", "fps <n>". */
+/* Text commands: "pause", "resume", "full", "fps <n>", "key <code> <0|1>". */
 static void ws_command(struct ws *w, const char *cmd)
 {
 	unsigned int n;
@@ -161,6 +162,15 @@ static void ws_command(struct ws *w, const char *cmd)
 		w->paused = false;
 	} else if (!strcmp(cmd, "full")) {
 		w->last = 0;
+	} else if (!strncmp(cmd, "key ", 4)) {
+		unsigned int code, down;
+
+		if (sscanf(cmd + 4, "%u %u", &code, &down) != 2 ||
+		    code == 0 || code >= NETFB_MAX_KEYCODE || down > 1)
+			return;
+		/* Track holds so a dropped connection cannot leave a key stuck. */
+		__assign_bit(code, w->keys, down);
+		netfb_key(w->nf, code, down);
 	} else if (!strncmp(cmd, "fps ", 4) && !kstrtouint(cmd + 4, 10, &n)) {
 		ws_set_interval(w, n);
 	}
@@ -178,6 +188,7 @@ static int ws_parse_rx(struct ws *w)
 		bool fin = b0 & 0x80;
 		size_t plen = b1 & 0x7f, hl = 2, total, i;
 		u8 *mask, *data;
+		char cmd[64];
 
 		if ((b0 & 0x70) || !(b1 & 0x80))	/* RSV bits / unmasked */
 			return ws_close(c, 1002);
@@ -193,7 +204,7 @@ static int ws_parse_rx(struct ws *w)
 			return ws_close(c, 1002);
 
 		total = hl + 4 + plen;
-		if (total >= RX_BUF)		/* leaves room for a NUL */
+		if (total > RX_BUF)
 			return ws_close(c, 1009);
 		if (w->rxlen < total)
 			break;
@@ -216,11 +227,21 @@ static int ws_parse_rx(struct ws *w)
 		case WS_OP_TEXT:
 			if (!fin)
 				return ws_close(c, 1003);
-			data[plen] = '\0';
-			ws_command(w, data);
+			/*
+			 * Copy out: terminating in place would clobber the first
+			 * byte of the next frame when several share one recv().
+			 */
+			if (plen < sizeof(cmd)) {
+				memcpy(cmd, data, plen);
+				cmd[plen] = '\0';
+				ws_command(w, cmd);
+			}
 			break;
-		default:	/* binary, continuation, reserved */
-			return ws_close(c, 1003);
+		case WS_OP_BIN:
+		case WS_OP_CONT:
+			return ws_close(c, 1003);	/* data we do not accept */
+		default:				/* reserved opcode */
+			return ws_close(c, 1002);
 		}
 
 		w->rxlen -= total;
@@ -275,15 +296,15 @@ void netfb_ws_run(struct netfb_conn *c)
 	if (ws_send_small(c->sock, WS_OP_TEXT, json, n))
 		goto out;
 
-	while (!kthread_should_stop()) {
+	while (!kthread_should_stop() && !netfb_srv_stopping(c->srv)) {
 		if (w->paused) {
 			schedule_timeout_interruptible(msecs_to_jiffies(100));
 		} else {
 			wait_event_interruptible_timeout(nf->wq,
 				READ_ONCE(nf->gen) != w->last ||
-				kthread_should_stop(),
+				kthread_should_stop() || netfb_srv_stopping(c->srv),
 				msecs_to_jiffies(WAIT_MS));
-			if (kthread_should_stop())
+			if (kthread_should_stop() || netfb_srv_stopping(c->srv))
 				break;
 		}
 		if (ws_poll_rx(w))
@@ -306,6 +327,8 @@ void netfb_ws_run(struct netfb_conn *c)
 	}
 	ws_close(c, 1001);	/* going away: module unload */
 out:
+	for_each_set_bit(n, w->keys, NETFB_MAX_KEYCODE)
+		netfb_key(nf, n, false);
 	kvfree(w->tx);
 	kfree(w);
 }

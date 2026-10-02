@@ -1,0 +1,32 @@
+#!/bin/busybox sh
+# Test VM init: loads netfb, starts the helpers, then serves commands from the
+# serial console ("rmmod", "dmesg", "poweroff").
+/bin/busybox mkdir -p /proc /sys /dev /sbin /usr/bin /usr/sbin
+/bin/busybox --install -s
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+ifconfig lo up
+ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up
+route add default gw 10.0.2.2
+
+insmod /netfb.ko width=320 height=200 bpp=32 bind_addr=0.0.0.0 \
+    token=test-token-0123456789abcdef keyboard=1 max_fps=60 max_clients=4 || echo INSMOD_FAILED
+/fbtest kbd &
+/fbtest scenario &
+SCEN=$!
+echo READY
+while read -r cmd; do
+    case "$cmd" in
+    rmmod)
+        # A framebuffer module cannot unload while /dev/fb0 is open or fbcon is
+        # bound to it (fb_ops.owner pins it), so release both first.
+        kill $SCEN 2>/dev/null; wait $SCEN 2>/dev/null
+        for c in /sys/class/vtconsole/vtcon*; do
+            grep -q "frame buffer" $c/name && echo 0 > $c/bind
+        done
+        rmmod netfb; echo "RMMOD_DONE $?" ;;
+    dmesg) dmesg ;;
+    poweroff) poweroff -f ;;
+    esac
+done

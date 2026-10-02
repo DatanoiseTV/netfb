@@ -52,8 +52,12 @@ struct netfb {
 	u64 *row_ver;
 	wait_queue_head_t wq;
 
+	struct input_dev *kbd;	/* NULL unless keyboard=1 */
+
 	struct netfb_server *srv;
 };
+
+#define NETFB_MAX_KEYCODE	256
 
 struct netfb_net_cfg {
 	__be32 addr;
@@ -75,6 +79,7 @@ struct netfb_conn {
 
 /* netfb_fb.c */
 void netfb_damage_rows(struct netfb *nf, u32 y0, u32 y1);
+void netfb_key(struct netfb *nf, unsigned int code, bool down);
 
 /* netfb_net.c */
 int netfb_net_start(struct netfb *nf, const struct netfb_net_cfg *cfg);
@@ -83,6 +88,7 @@ int netfb_send_all(struct socket *sock, const void *buf, size_t len);
 int netfb_info_json(const struct netfb *nf, unsigned int max_fps, char *buf,
 		    size_t size);
 unsigned int netfb_srv_max_fps(const struct netfb_server *srv);
+bool netfb_srv_stopping(const struct netfb_server *srv);
 
 /* netfb_ws.c */
 void netfb_ws_run(struct netfb_conn *c);

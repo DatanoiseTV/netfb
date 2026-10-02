@@ -76,11 +76,17 @@ struct netfb_server {
 	struct mutex lock;		/* protects conns, nconns */
 	struct list_head conns;
 	unsigned int nconns;
+	bool stopping;			/* set once on unload; sessions say goodbye */
 };
 
 unsigned int netfb_srv_max_fps(const struct netfb_server *srv)
 {
 	return srv->cfg.max_fps;
+}
+
+bool netfb_srv_stopping(const struct netfb_server *srv)
+{
+	return READ_ONCE(srv->stopping);
 }
 
 /* ---- socket helpers ----------------------------------------------------- */
@@ -113,10 +119,11 @@ int netfb_info_json(const struct netfb *nf, unsigned int max_fps, char *buf,
 	return scnprintf(buf, size,
 		"{\"type\":\"info\",\"name\":\"netfb\",\"width\":%u,\"height\":%u,"
 		"\"bpp\":%u,\"stride\":%u,\"red\":[%u,%u],\"green\":[%u,%u],"
-		"\"blue\":[%u,%u],\"max_fps\":%u}",
+		"\"blue\":[%u,%u],\"max_fps\":%u,\"keyboard\":%s}",
 		nf->width, nf->height, nf->bpp, nf->rowbytes,
 		v->red.offset, v->red.length, v->green.offset, v->green.length,
-		v->blue.offset, v->blue.length, max_fps);
+		v->blue.offset, v->blue.length, max_fps,
+		nf->kbd ? "true" : "false");
 }
 
 /* ---- HTTP request parsing ----------------------------------------------- */
@@ -504,6 +511,26 @@ static void reap_conns(struct netfb_server *srv, bool all)
 	struct netfb_conn *c, *tmp;
 	LIST_HEAD(dead);
 
+	if (all) {
+		unsigned long grace = jiffies + HZ;
+
+		/* Let sessions send a close frame and leave on their own... */
+		WRITE_ONCE(srv->stopping, true);
+		wake_up_all(&srv->nf->wq);
+		while (time_before(jiffies, grace)) {
+			bool busy = false;
+
+			mutex_lock(&srv->lock);
+			list_for_each_entry(c, &srv->conns, node)
+				busy |= !atomic_read(&c->done);
+			mutex_unlock(&srv->lock);
+			if (!busy)
+				break;
+			msleep(10);
+		}
+	}
+
+	/* ...then cut off whatever is still blocked in the network. */
 	mutex_lock(&srv->lock);
 	list_for_each_entry_safe(c, tmp, &srv->conns, node) {
 		if (!all && !atomic_read(&c->done))
