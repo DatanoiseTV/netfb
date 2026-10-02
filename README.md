@@ -230,10 +230,13 @@ were taken.
 
 Known gaps:
 
-- The KASAN/lockdep run (debug kernel) covers the code up to the LZ4 change. The later
-  changes (the `sk_data_ready` wake-up that cuts input latency, `ping`) passed the
-  whole suite on a non-debug kernel only.
-- No kmemleak run, only arm64 exercised, no mouse input, IPv4 only.
+- The whole suite, including the WebSocket wake-up and VNC code, has run clean on a
+  kernel built with KASAN, lockdep, atomic-sleep and list/object debugging (117 checks,
+  three runs; one earlier run died with a harness traceback I did not capture). No
+  kmemleak run.
+- Only arm64 exercised, no mouse input, IPv4 only.
+- VNC is verified against the test suite's own client and vncdotool, not against macOS
+  Screen Sharing, TigerVNC or RealVNC.
 
 ## License
 
