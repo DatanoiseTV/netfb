@@ -66,14 +66,36 @@
 	"style-src 'unsafe-inline'; img-src data: blob:; connect-src 'self' ws: wss:; " \
 	"base-uri 'none'; form-action 'none'; frame-ancestors 'none'\r\n"
 
+struct netfb_listener {
+	struct netfb_server *srv;
+	struct socket *sock;
+	struct task_struct *task;
+	enum netfb_proto proto;
+};
+
+#define AUTH_TRACKED		16
+#define AUTH_MAX_FAILS		5
+#define AUTH_WINDOW		(300 * HZ)
+
+/* Failed-login bookkeeping per source address, small and recycled oldest first. */
+struct auth_rec {
+	__be32 ip;			/* 0: unused */
+	unsigned int fails;
+	unsigned long first;		/* start of the current counting window */
+	unsigned long locked_until;
+};
+
 struct netfb_server {
 	struct netfb *nf;
 	struct netfb_net_cfg cfg;
 	char *token;
 	size_t toklen;
 	struct crypto_shash *sha1;
-	struct socket *listen;
-	struct task_struct *accept_task;
+	char *vnc_password;
+	struct netfb_listener lis[NETFB_PROTO_MAX];
+	unsigned int nlis;
+	spinlock_t auth_lock;
+	struct auth_rec auth[AUTH_TRACKED];
 	struct mutex lock;		/* protects conns, nconns */
 	struct list_head conns;
 	unsigned int nconns;
@@ -88,6 +110,121 @@ unsigned int netfb_srv_max_fps(const struct netfb_server *srv)
 bool netfb_srv_stopping(const struct netfb_server *srv)
 {
 	return READ_ONCE(srv->stopping);
+}
+
+const char *netfb_srv_vnc_password(const struct netfb_server *srv)
+{
+	return srv->vnc_password;
+}
+
+/* Caller holds auth_lock. */
+static struct auth_rec *auth_find(struct netfb_server *srv, __be32 ip, bool create)
+{
+	struct auth_rec *r, *oldest = NULL;
+
+	for (r = srv->auth; r < srv->auth + AUTH_TRACKED; r++) {
+		if (r->ip == ip)
+			return r;
+		if (!oldest || !r->ip || time_before(r->first, oldest->first))
+			oldest = r;
+	}
+	if (!create)
+		return NULL;
+	memset(oldest, 0, sizeof(*oldest));
+	oldest->ip = ip;
+	oldest->first = jiffies;
+	return oldest;
+}
+
+bool netfb_auth_locked(struct netfb_server *srv, __be32 ip)
+{
+	struct auth_rec *r;
+	unsigned long flags;
+	bool locked = false;
+
+	spin_lock_irqsave(&srv->auth_lock, flags);
+	r = auth_find(srv, ip, false);
+	if (r && r->locked_until && time_before(jiffies, r->locked_until))
+		locked = true;
+	spin_unlock_irqrestore(&srv->auth_lock, flags);
+	return locked;
+}
+
+void netfb_auth_failed(struct netfb_server *srv, __be32 ip)
+{
+	struct auth_rec *r;
+	unsigned long flags;
+
+	if (!srv->cfg.vnc_lockout)
+		return;
+	spin_lock_irqsave(&srv->auth_lock, flags);
+	r = auth_find(srv, ip, true);
+	if (time_after(jiffies, r->first + AUTH_WINDOW)) {
+		r->fails = 0;
+		r->first = jiffies;
+	}
+	if (++r->fails >= AUTH_MAX_FAILS) {
+		r->locked_until = jiffies + srv->cfg.vnc_lockout * HZ;
+		r->fails = 0;
+		pr_warn("%pI4: %d failed VNC logins, locked out for %us\n", &ip,
+			AUTH_MAX_FAILS, srv->cfg.vnc_lockout);
+	}
+	spin_unlock_irqrestore(&srv->auth_lock, flags);
+}
+
+void netfb_auth_ok(struct netfb_server *srv, __be32 ip)
+{
+	struct auth_rec *r;
+	unsigned long flags;
+
+	spin_lock_irqsave(&srv->auth_lock, flags);
+	r = auth_find(srv, ip, false);
+	if (r)
+		memset(r, 0, sizeof(*r));
+	spin_unlock_irqrestore(&srv->auth_lock, flags);
+}
+
+/*
+ * Wake a session as soon as its client sends something. Runs in softirq context
+ * for every segment that carries data (or the FIN); without it a session that is
+ * sleeping on framebuffer damage only notices client input at its next timeout.
+ */
+static void conn_data_ready(struct sock *sk)
+{
+	struct netfb_conn *c;
+
+	read_lock_bh(&sk->sk_callback_lock);
+	c = sk->sk_user_data;
+	if (c) {
+		WRITE_ONCE(c->rx_pending, true);
+		wake_up_interruptible(&c->nf->wq);
+		c->old_data_ready(sk);
+	}
+	read_unlock_bh(&sk->sk_callback_lock);
+}
+
+void netfb_conn_hook_rx(struct netfb_conn *c)
+{
+	struct sock *sk = c->sock->sk;
+
+	write_lock_bh(&sk->sk_callback_lock);
+	c->old_data_ready = sk->sk_data_ready;
+	sk->sk_user_data = c;
+	sk->sk_data_ready = conn_data_ready;
+	write_unlock_bh(&sk->sk_callback_lock);
+}
+
+void netfb_conn_unhook_rx(struct netfb_conn *c)
+{
+	struct sock *sk;
+
+	if (!c->old_data_ready)		/* never hooked */
+		return;
+	sk = c->sock->sk;
+	write_lock_bh(&sk->sk_callback_lock);
+	sk->sk_data_ready = c->old_data_ready;
+	sk->sk_user_data = NULL;
+	write_unlock_bh(&sk->sk_callback_lock);
 }
 
 /* ---- socket helpers ----------------------------------------------------- */
@@ -495,11 +632,16 @@ static int handle_request(struct netfb_conn *c, char *buf)
 static int netfb_conn_fn(void *data)
 {
 	struct netfb_conn *c = data;
-	char *buf = kmalloc(HTTP_HEAD_MAX + 1, GFP_KERNEL);
 
-	if (buf) {
-		handle_request(c, buf);
-		kfree(buf);
+	if (c->proto == NETFB_PROTO_VNC) {
+		netfb_vnc_run(c);
+	} else {
+		char *buf = kmalloc(HTTP_HEAD_MAX + 1, GFP_KERNEL);
+
+		if (buf) {
+			handle_request(c, buf);
+			kfree(buf);
+		}
 	}
 	atomic_set(&c->done, 1);
 	return 0;
@@ -552,14 +694,16 @@ static void reap_conns(struct netfb_server *srv, bool all)
 	}
 }
 
-static void reject_busy(struct socket *sock)
+static void reject_busy(struct socket *sock, enum netfb_proto proto)
 {
 	sock->sk->sk_sndtimeo = HZ;
-	http_error(sock, 503, "Service Unavailable");
-	sock_release(sock);
+	if (proto == NETFB_PROTO_HTTP)
+		http_error(sock, 503, "Service Unavailable");
+	sock_release(sock);	/* a VNC client just sees the connection close */
 }
 
-static void spawn_conn(struct netfb_server *srv, struct socket *sock)
+static void spawn_conn(struct netfb_server *srv, struct socket *sock,
+		       enum netfb_proto proto)
 {
 	struct netfb_conn *c;
 
@@ -570,7 +714,7 @@ static void spawn_conn(struct netfb_server *srv, struct socket *sock)
 	mutex_lock(&srv->lock);
 	if (srv->nconns >= srv->cfg.max_clients) {
 		mutex_unlock(&srv->lock);
-		reject_busy(sock);
+		reject_busy(sock, proto);
 		return;
 	}
 
@@ -580,6 +724,7 @@ static void spawn_conn(struct netfb_server *srv, struct socket *sock)
 	c->nf = srv->nf;
 	c->srv = srv;
 	c->sock = sock;
+	c->proto = proto;
 	c->peer = inet_sk(sock->sk)->inet_daddr;
 	atomic_set(&c->done, 0);
 	c->task = kthread_create(netfb_conn_fn, c, "netfb-conn");
@@ -601,14 +746,14 @@ err:
 
 static int netfb_accept_fn(void *data)
 {
-	struct netfb_server *srv = data;
+	struct netfb_listener *l = data;
 
 	while (!kthread_should_stop()) {
 		struct socket *ns;
 		int err;
 
-		reap_conns(srv, false);
-		err = kernel_accept(srv->listen, &ns, 0);
+		reap_conns(l->srv, false);
+		err = kernel_accept(l->sock, &ns, 0);
 		if (err == -EAGAIN || err == -EINTR || err == -ERESTARTSYS)
 			continue;	/* rcvtimeo expired: re-check for stop */
 		if (err < 0) {
@@ -616,21 +761,66 @@ static int netfb_accept_fn(void *data)
 			schedule_timeout_interruptible(HZ / 10);
 			continue;
 		}
-		spawn_conn(srv, ns);
+		spawn_conn(l->srv, ns, l->proto);
 	}
 	return 0;
 }
 
 /* ---- start / stop ------------------------------------------------------- */
 
-int netfb_net_start(struct netfb *nf, const struct netfb_net_cfg *cfg)
+static int netfb_listen(struct netfb_server *srv, u16 port, enum netfb_proto proto)
 {
 	struct sockaddr_in sin = {
 		.sin_family = AF_INET,
-		.sin_addr.s_addr = cfg->addr,
-		.sin_port = htons(cfg->port),
+		.sin_addr.s_addr = srv->cfg.addr,
+		.sin_port = htons(port),
 	};
+	struct netfb_listener *l = &srv->lis[srv->nlis];
+	int ret;
+
+	l->srv = srv;
+	l->proto = proto;
+	ret = sock_create_kern(&init_net, AF_INET, SOCK_STREAM, IPPROTO_TCP,
+			       &l->sock);
+	if (ret)
+		return ret;
+	sock_set_reuseaddr(l->sock->sk);
+	ret = kernel_bind(l->sock, (netfb_sockaddr *)&sin, sizeof(sin));
+	if (ret) {
+		pr_err("bind %pI4:%u failed: %d\n", &srv->cfg.addr, port, ret);
+		goto err;
+	}
+	ret = kernel_listen(l->sock, 16);
+	if (ret)
+		goto err;
+	/* Makes kernel_accept() time out so the thread can notice a stop. */
+	l->sock->sk->sk_rcvtimeo = ACCEPT_POLL;
+
+	l->task = kthread_run(netfb_accept_fn, l,
+			      proto == NETFB_PROTO_VNC ? "netfb-vnc" : "netfb-accept");
+	if (IS_ERR(l->task)) {
+		ret = PTR_ERR(l->task);
+		goto err;
+	}
+	srv->nlis++;
+	return 0;
+err:
+	sock_release(l->sock);
+	return ret;
+}
+
+static void netfb_unlisten_all(struct netfb_server *srv)
+{
+	unsigned int i;
+
+	for (i = 0; i < srv->nlis; i++)
+		kthread_stop(srv->lis[i].task);
+}
+
+int netfb_net_start(struct netfb *nf, const struct netfb_net_cfg *cfg)
+{
 	struct netfb_server *srv;
+	unsigned int i;
 	int ret;
 
 	srv = kzalloc(sizeof(*srv), GFP_KERNEL);
@@ -639,6 +829,7 @@ int netfb_net_start(struct netfb *nf, const struct netfb_net_cfg *cfg)
 	srv->nf = nf;
 	srv->cfg = *cfg;
 	mutex_init(&srv->lock);
+	spin_lock_init(&srv->auth_lock);
 	INIT_LIST_HEAD(&srv->conns);
 
 	if (cfg->token) {
@@ -649,44 +840,42 @@ int netfb_net_start(struct netfb *nf, const struct netfb_net_cfg *cfg)
 		}
 		srv->toklen = strlen(srv->token);
 	}
+	if (cfg->vnc_password) {
+		srv->vnc_password = kstrdup(cfg->vnc_password, GFP_KERNEL);
+		if (!srv->vnc_password) {
+			ret = -ENOMEM;
+			goto err_token;
+		}
+	}
 
 	srv->sha1 = crypto_alloc_shash("sha1", 0, 0);
 	if (IS_ERR(srv->sha1)) {
 		ret = PTR_ERR(srv->sha1);
 		pr_err("sha1 unavailable (CONFIG_CRYPTO_SHA1): %d\n", ret);
-		goto err_token;
+		goto err_pw;
 	}
 
-	ret = sock_create_kern(&init_net, AF_INET, SOCK_STREAM, IPPROTO_TCP,
-			       &srv->listen);
+	ret = netfb_listen(srv, cfg->port, NETFB_PROTO_HTTP);
 	if (ret)
 		goto err_sha;
-	sock_set_reuseaddr(srv->listen->sk);
-	ret = kernel_bind(srv->listen, (netfb_sockaddr *)&sin, sizeof(sin));
-	if (ret) {
-		pr_err("bind %pI4:%u failed: %d\n", &cfg->addr, cfg->port, ret);
-		goto err_sock;
-	}
-	ret = kernel_listen(srv->listen, 16);
-	if (ret)
-		goto err_sock;
-	/* Makes kernel_accept() time out so the thread can notice a stop. */
-	srv->listen->sk->sk_rcvtimeo = ACCEPT_POLL;
-
-	srv->accept_task = kthread_run(netfb_accept_fn, srv, "netfb-accept");
-	if (IS_ERR(srv->accept_task)) {
-		ret = PTR_ERR(srv->accept_task);
-		goto err_sock;
+	if (cfg->vnc_port) {
+		ret = netfb_listen(srv, cfg->vnc_port, NETFB_PROTO_VNC);
+		if (ret)
+			goto err_listen;
 	}
 	nf->srv = srv;
 	return 0;
 
-err_sock:
-	sock_release(srv->listen);
+err_listen:
+	netfb_unlisten_all(srv);
+	for (i = 0; i < srv->nlis; i++)
+		sock_release(srv->lis[i].sock);
 err_sha:
 	crypto_free_shash(srv->sha1);
+err_pw:
+	kfree_sensitive(srv->vnc_password);
 err_token:
-	kfree(srv->token);
+	kfree_sensitive(srv->token);
 err_free:
 	kfree(srv);
 	return ret;
@@ -695,14 +884,17 @@ err_free:
 void netfb_net_stop(struct netfb *nf)
 {
 	struct netfb_server *srv = nf->srv;
+	unsigned int i;
 
-	kthread_stop(srv->accept_task);
+	netfb_unlisten_all(srv);
 	reap_conns(srv, true);
 	/* A data_ready callback may still be executing module text on another CPU. */
 	synchronize_rcu();
-	sock_release(srv->listen);
+	for (i = 0; i < srv->nlis; i++)
+		sock_release(srv->lis[i].sock);
 	crypto_free_shash(srv->sha1);
 	kfree_sensitive(srv->token);
+	kfree_sensitive(srv->vnc_password);
 	kfree(srv);
 	nf->srv = NULL;
 }

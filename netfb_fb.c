@@ -13,6 +13,8 @@
 #include <linux/fb.h>
 #include <linux/inet.h>
 #include <linux/input.h>
+#include <crypto/des.h>
+#include <linux/bitrev.h>
 #include <linux/in.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
@@ -45,6 +47,19 @@ MODULE_PARM_DESC(port, "TCP port to listen on (default 8080)");
 static char *token;
 module_param(token, charp, 0);
 MODULE_PARM_DESC(token, "Access token, 16-128 chars of [A-Za-z0-9._~-]. Required unless bind_addr is loopback");
+
+static unsigned short vnc_port;
+module_param(vnc_port, ushort, 0444);
+MODULE_PARM_DESC(vnc_port, "TCP port of the VNC (RFB) server, 0 = disabled (default). 5900 is the usual one");
+
+/* Permission 0 for the same reason as token. */
+static char *vnc_password;
+module_param(vnc_password, charp, 0);
+MODULE_PARM_DESC(vnc_password, "VNC password, exactly 8 printable ASCII characters. Required unless bind_addr is loopback");
+
+static unsigned int vnc_lockout = 60;
+module_param(vnc_lockout, uint, 0444);
+MODULE_PARM_DESC(vnc_lockout, "Seconds a source address is locked out of VNC after 5 failed logins, 0 = off (default 60)");
 
 static bool allow_insecure;
 module_param(allow_insecure, bool, 0444);
@@ -256,6 +271,39 @@ static int netfb_check_params(struct netfb_net_cfg *cfg)
 		cfg->token = NULL;
 	}
 
+	cfg->vnc_port = vnc_port;
+	cfg->vnc_lockout = vnc_lockout;
+	cfg->vnc_password = NULL;
+	if (vnc_password && *vnc_password) {
+		struct des_ctx probe;
+		u8 key[8] = {};
+		size_t i, n = strlen(vnc_password);
+
+		if (n != 8) {
+			pr_err("vnc_password must be exactly 8 characters (the protocol uses 8)\n");
+			return -EINVAL;
+		}
+		for (i = 0; i < n; i++) {
+			if (vnc_password[i] <= 0x20 || vnc_password[i] >= 0x7f) {
+				pr_err("vnc_password must be printable ASCII without spaces\n");
+				return -EINVAL;
+			}
+			/* RFB reverses the bits of every key byte. */
+			key[i] = bitrev8(vnc_password[i]);
+		}
+		if (des_expand_key(&probe, key, sizeof(key))) {
+			pr_err("vnc_password maps to a weak DES key, choose another\n");
+			return -EINVAL;
+		}
+		memzero_explicit(&probe, sizeof(probe));
+		memzero_explicit(key, sizeof(key));
+		cfg->vnc_password = vnc_password;
+	}
+	if (vnc_port && !cfg->vnc_password && !ipv4_is_loopback(cfg->addr) && !allow_insecure) {
+		pr_err("refusing to expose VNC on %s without vnc_password (or allow_insecure=1)\n", bind_addr);
+		return -EPERM;
+	}
+
 	if (!cfg->token && !ipv4_is_loopback(cfg->addr) && !allow_insecure) {
 		pr_err("refusing to expose the framebuffer on %s without a token (set token=, or allow_insecure=1)\n",
 		       bind_addr);
@@ -373,6 +421,9 @@ static int __init netfb_init(void)
 		width, height, bpp, &cfg.addr, cfg.port,
 		cfg.token ? " (token required)" : "",
 		nf->kbd ? " keyboard input ENABLED" : "");
+	if (cfg.vnc_port)
+		pr_info("VNC on %pI4:%u (%s)\n", &cfg.addr, cfg.vnc_port,
+			cfg.vnc_password ? "password" : "no authentication");
 	return 0;
 
 err_kbd:

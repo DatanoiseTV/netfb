@@ -45,8 +45,6 @@ struct ws {
 	struct netfb *nf;
 	u8 *tx;			/* WS_HDR_LEN + NETFB_MSG_HDR_LEN + pixels */
 	void *lz4wrk;		/* LZ4_MEM_COMPRESS scratch */
-	bool rx_pending;	/* set by sk_data_ready: the client sent something */
-	void (*old_data_ready)(struct sock *sk);
 	u8 rx[RX_BUF];
 	size_t rxlen;
 	u64 last;		/* last generation sent to this client */
@@ -302,7 +300,7 @@ static int ws_poll_rx(struct ws *w)
 {
 	int round, ret;
 
-	WRITE_ONCE(w->rx_pending, false);
+	WRITE_ONCE(w->c->rx_pending, false);
 	for (round = 0; round < 16; round++) {
 		struct msghdr msg = {};
 		struct kvec iov;
@@ -326,51 +324,8 @@ static int ws_poll_rx(struct ws *w)
 		if (ret)
 			return ret;
 	}
-	WRITE_ONCE(w->rx_pending, true);
+	WRITE_ONCE(w->c->rx_pending, true);
 	return 0;
-}
-
-/*
- * Runs in softirq context for every segment that carries data (or the FIN).
- * Waking the session here is what keeps input latency at the network RTT
- * instead of the wait timeout.
- */
-static void ws_data_ready(struct sock *sk)
-{
-	struct ws *w;
-
-	read_lock_bh(&sk->sk_callback_lock);
-	w = sk->sk_user_data;
-	if (w) {
-		WRITE_ONCE(w->rx_pending, true);
-		wake_up_interruptible(&w->nf->wq);
-		w->old_data_ready(sk);
-	}
-	read_unlock_bh(&sk->sk_callback_lock);
-}
-
-static void ws_hook_socket(struct ws *w)
-{
-	struct sock *sk = w->c->sock->sk;
-
-	write_lock_bh(&sk->sk_callback_lock);
-	w->old_data_ready = sk->sk_data_ready;
-	sk->sk_user_data = w;
-	sk->sk_data_ready = ws_data_ready;
-	write_unlock_bh(&sk->sk_callback_lock);
-}
-
-static void ws_unhook_socket(struct ws *w)
-{
-	struct sock *sk;
-
-	if (!w->old_data_ready)		/* never hooked */
-		return;
-	sk = w->c->sock->sk;
-	write_lock_bh(&sk->sk_callback_lock);
-	sk->sk_data_ready = w->old_data_ready;
-	sk->sk_user_data = NULL;
-	write_unlock_bh(&sk->sk_callback_lock);
 }
 
 /* ---- session ------------------------------------------------------------ */
@@ -398,13 +353,13 @@ void netfb_ws_run(struct netfb_conn *c)
 	if (ws_send_small(c->sock, WS_OP_TEXT, json, n))
 		goto out;
 
-	ws_hook_socket(w);
+	netfb_conn_hook_rx(c);
 
 	while (!kthread_should_stop() && !netfb_srv_stopping(c->srv)) {
 		/* Wake for damage, for client data, or to re-check every WAIT_MS. */
 		wait_event_interruptible_timeout(nf->wq,
 			(!w->paused && READ_ONCE(nf->gen) != w->last) ||
-			READ_ONCE(w->rx_pending) ||
+			READ_ONCE(c->rx_pending) ||
 			kthread_should_stop() || netfb_srv_stopping(c->srv),
 			msecs_to_jiffies(WAIT_MS));
 		if (kthread_should_stop() || netfb_srv_stopping(c->srv))
@@ -428,13 +383,13 @@ void netfb_ws_run(struct netfb_conn *c)
 			 * data still cuts the pause short so input is never delayed.
 			 */
 			wait_event_interruptible_timeout(nf->wq,
-				READ_ONCE(w->rx_pending) || kthread_should_stop() ||
+				READ_ONCE(c->rx_pending) || kthread_should_stop() ||
 				netfb_srv_stopping(c->srv), w->interval);
 		}
 	}
 	ws_close(c, 1001);	/* going away: module unload */
 out:
-	ws_unhook_socket(w);
+	netfb_conn_unhook_rx(c);
 	for_each_set_bit(n, w->keys, NETFB_MAX_KEYCODE)
 		netfb_key(nf, n, false);
 	kvfree(w->tx);

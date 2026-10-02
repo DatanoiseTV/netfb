@@ -12,6 +12,7 @@ import argparse, base64, gzip, hashlib, json, os, random, re, socket, struct
 import subprocess, sys, threading, time
 
 TOKEN = "test-token-0123456789abcdef"
+VNC_PW = "n3tfbVnc"
 GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 W, H = 320, 200
 RED, GREEN, BLUE, BLACK = 0x00FF0000, 0x0000FF00, 0x000000FF, 0
@@ -494,7 +495,9 @@ def t_limits(port):
     check("slots are reclaimed after clients leave", get(port, "/")[0] == 200)
 
 
-def t_unload(port, ser):
+def t_unload(port, ser, vport):
+    from rfb import RFB
+    vc = RFB(vport, password=VNC_PW)
     w = WS(port)
     w.pump(timeout=0.5)
     m = ser.mark()
@@ -513,12 +516,274 @@ def t_unload(port, ser):
     except OSError:
         gone = True
     check("listener is gone after rmmod", gone)
+    try:
+        vc.sock.settimeout(5)
+        vgone = vc.sock.recv(1) == b""
+    except OSError:
+        vgone = True
+    check("rmmod with a VNC client attached: the VNC session is closed", vgone)
+    vc.close()
     w.close()
 
 
 SPLAT = re.compile(r"BUG:|WARNING:|KASAN|Oops|Call trace|possible circular|inconsistent lock|suspicious RCU|"
                    r"sleeping function|unable to handle|Internal error|refcount_t:|use-after-free|INFO: task|"
                    r"hung task|lock held when returning|bad unlock balance")
+
+
+def t_vnc(vport, port, ser):
+    from rfb import RFB, RFBError, selftest
+    selftest()
+    RED_, GREEN_, BLUE_, BLACK_ = (255, 0, 0), (0, 255, 0), (0, 0, 255), (0, 0, 0)
+
+    def closed(c, timeout=4):
+        end = time.time() + timeout
+        c.sock.settimeout(1)
+        while time.time() < end:
+            try:
+                if not c.sock.recv(4096):
+                    return True
+            except socket.timeout:
+                continue
+            except OSError:
+                return True
+        return False
+
+    # -- handshake -------------------------------------------------------
+    for ver, name in ((b"RFB 003.008\n", "3.8"), (b"RFB 003.007\n", "3.7"), (b"RFB 003.003\n", "3.3"),
+                      (b"RFB 003.889\n", "3.889 (Apple)")):
+        c = RFB(vport, version=ver, password=VNC_PW)
+        check(f"vnc {name}: handshake, auth and ServerInit", (c.w, c.h) == (W, H) and c.name == "netfb")
+        if name == "3.8":
+            check("vnc: server banner is RFB 003.008 and offers only VNC authentication",
+                  c.server_version == b"RFB 003.008\n" and c.types == [2], f"{c.server_version} {c.types}")
+            sp = c.server_pf
+            check("vnc: ServerInit pixel format is the framebuffer's (32 bpp, depth 24, little endian, 8/8/8 at 16/8/0)",
+                  (sp["bpp"], sp["depth"], sp["be"], sp["tc"], sp["rmax"], sp["gmax"], sp["bmax"], sp["rs"], sp["gs"], sp["bs"])
+                  == (32, 24, 0, 1, 255, 255, 255, 16, 8, 0), str(sp))
+        c.close()
+    t0 = time.time()
+    try:
+        RFB(vport, password="wrongpw1")
+        bad = None
+    except RFBError as e:
+        bad = str(e)
+    check("vnc: wrong password is refused with a reason", bad and "authentication failed" in bad, str(bad))
+    check("vnc: a failed login is delayed (>= 1.3 s)", time.time() - t0 >= 1.3, f"{time.time() - t0:.2f}s")
+    try:
+        RFB(vport, password=VNC_PW, security=1)
+        bad = None
+    except RFBError as e:
+        bad = str(e)
+    check("vnc: choosing a security type that was not offered fails", bad and "not offered" in bad, str(bad))
+    for name, raw in (("unsupported version", b"RFB 004.000\n"), ("garbage", b"HELLO WORLD!\n"), ("short junk", b"RFB\n")):
+        s = socket.create_connection(("127.0.0.1", vport), timeout=5)
+        s.recv(12)
+        s.sendall(raw)
+        s.settimeout(4)
+        try:
+            ok = s.recv(100) == b""
+        except OSError:
+            ok = True
+        check(f"vnc: {name} in the version exchange closes the connection", ok)
+        s.close()
+
+    # -- encodings and pixel formats ----------------------------------------
+    raw_c = RFB(vport, password=VNC_PW)
+    raw_c.set_encodings([0])
+    raw_c.request(0)
+    raw_c.read_update()
+    check("vnc raw: first non-incremental request returns the whole screen", sum(h for _, h, _ in raw_c.rects) >= H,
+          str(raw_c.rects))
+    check("vnc raw: write() path, full-screen red", raw_c.wait_rows([(0, RED_), (199, RED_), (60, RED_)], 15))
+    check("vnc raw: mmap() path, rows 50..99 green and neighbours untouched",
+          raw_c.wait_rows([(60, GREEN_), (50, GREEN_), (99, GREEN_), (49, RED_), (100, RED_)], 6))
+
+    z_c = RFB(vport, password=VNC_PW)
+    z_c.set_encodings([16, 0])
+    z_c.request(0)
+    z_c.read_update()
+    check("vnc zrle: updates use the ZRLE encoding", z_c.rects and all(e == 16 for _, _, e in z_c.rects), str(z_c.rects[:3]))
+    for attempt in range(6):                      # phases change every 3 s: retry until both saw the same moment
+        raw_c.request(0); z_c.request(0)
+        raw_c.read_update(); z_c.read_update()
+        while len(z_c.rgb) and False:
+            pass
+        if raw_c.rgb == z_c.rgb:
+            break
+        time.sleep(0.4)
+    check("vnc: raw and zrle clients show identical pictures", raw_c.rgb == z_c.rgb)
+
+    raw_c.wait_rows([(0, RED_)], 8)               # settle on a stretch with a quiet screen
+    z_c.wait_rows([(0, RED_)], 8)
+    z_c.sock.settimeout(4.5)
+    try:
+        extra = z_c.sock.recv(1)
+    except socket.timeout:
+        extra = None
+    check("vnc: nothing is sent without an outstanding request (pull protocol)", extra is None, repr(extra))
+    mark = len(raw_c.rects)
+    raw_c.request(0, 0, 40, W, 20)
+    raw_c.read_update()
+    check("vnc: a request for a region only gets rows inside it", all(40 <= y and y + h <= 60 for y, h, _ in raw_c.rects[mark:]),
+          str(raw_c.rects[mark:]))
+
+    mark = len(raw_c.rects)
+    raw_c.wait_rows([(150, BLUE_), (151, BLUE_), (149, RED_)], 8)
+    rows = sum(h for _, h, _ in raw_c.rects[mark:])
+    # Several full-screen phases may have gone by; just require that a band update was not a full frame.
+    small = [h for _, h, _ in raw_c.rects[mark:] if h <= 24]
+    check("vnc: a 2 row change is sent as a small rectangle", small, f"{rows} rows in {raw_c.rects[mark:]}")
+    raw_c.close(); z_c.close()
+
+    formats = [
+        ("RGB565 little endian", dict(bpp=16, depth=16, be=0, rmax=31, gmax=63, bmax=31, rs=11, gs=5, bs=0)),
+        ("RGB555 big endian", dict(bpp=16, depth=15, be=1, rmax=31, gmax=31, bmax=31, rs=10, gs=5, bs=0)),
+        ("RGB332 (8 bpp)", dict(bpp=8, depth=8, be=0, rmax=7, gmax=7, bmax=3, rs=5, gs=2, bs=0)),
+        ("RGBX bytes (32 bpp, shifts 0/8/16)", dict(bpp=32, depth=24, be=0, rmax=255, gmax=255, bmax=255, rs=0, gs=8, bs=16)),
+        ("BGRX big endian (32 bpp, shifts 8/16/24)", dict(bpp=32, depth=24, be=1, rmax=255, gmax=255, bmax=255, rs=8, gs=16, bs=24)),
+    ]
+    for enc_name, encs in (("raw", [0]), ("zrle", [16, 0])):
+        for fname, pf in formats:
+            c = RFB(vport, password=VNC_PW)
+            c.set_pixel_format(**pf)
+            c.set_encodings(encs)
+            c.request(0)
+            c.read_update()
+            ok = c.wait_rows([(0, RED_), (199, RED_)], 15, tol=4)
+            ok = ok and c.wait_rows([(60, GREEN_), (49, RED_)], 6, tol=4)
+            check(f"vnc {enc_name}: client format {fname}", ok, f"pixel(0,60)={c.pixel(0, 60)} pixel(0,0)={c.pixel(0, 0)}")
+            c.close()
+    c = RFB(vport, password=VNC_PW)
+    c.set_encodings([16])
+    ok = True
+    for pf in (formats[0][1], formats[4][1], formats[2][1]):      # switch format on a live ZRLE stream
+        c.set_pixel_format(**pf)
+        c.request(0)
+        c.read_update()
+        ok = ok and c.wait_rows([(0, RED_), (60, GREEN_)], 20, tol=4) or c.wait_rows([(0, RED_)], 8, tol=4)
+    check("vnc zrle: switching the pixel format on a live stream keeps the picture correct", ok)
+    c.close()
+
+    # -- keyboard ---------------------------------------------------------------
+    c = RFB(vport, password=VNC_PW)
+    m = ser.mark()
+    c.key(1, 0x61); c.key(0, 0x61)
+    ser.wait(r"KEY 30 0", 5, m)
+    check("vnc key: 'a'", keys(ser, m) == ["30 1", "30 0"], str(keys(ser, m)))
+    m = ser.mark()
+    c.key(1, 0x41); c.key(0, 0x41)
+    ser.wait(r"KEY 42 0", 5, m)
+    check("vnc key: 'A' without a Shift event is typed with Shift", keys(ser, m) == ["42 1", "30 1", "30 0", "42 0"], str(keys(ser, m)))
+    m = ser.mark()
+    c.key(1, 0xffe1); c.key(1, 0x2f); c.key(0, 0x2f); c.key(0, 0xffe1)
+    ser.wait(r"KEY 42 0", 5, m)
+    time.sleep(0.2)
+    check("vnc key: '/' held with Shift (other layout) is typed without Shift",
+          keys(ser, m) == ["42 1", "42 0", "53 1", "53 0", "42 1", "42 0"], str(keys(ser, m)))
+    m = ser.mark()
+    for sym in (0xff0d, 0xff51, 0xffbe, 0xffff):
+        c.key(1, sym); c.key(0, sym)
+    ser.wait(r"KEY 111 0", 5, m)
+    check("vnc key: Return, Left, F1, Delete", keys(ser, m) == ["28 1", "28 0", "105 1", "105 0", "59 1", "59 0", "111 1", "111 0"],
+          str(keys(ser, m)))
+    m = ser.mark()
+    c.key(1, 0x1234567); c.key(1, 0xffe5); c.pointer(1, 5, 5)
+    time.sleep(0.5)
+    check("vnc key: unknown keysyms, Caps Lock and pointer events are ignored", keys(ser, m) == [], str(keys(ser, m)))
+    m = ser.mark()
+    c.key(1, 0xffe3); c.key(1, 0x62)                  # Control down, b down, then the client vanishes
+    ser.wait(r"KEY 48 1", 5, m)
+    c.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)) if sys.platform != "darwin" else None
+    c.close()
+    ser.wait(r"KEY 29 0", 8, m)
+    check("vnc: a dropped client releases held keys", set(keys(ser, m)) >= {"29 1", "48 1", "48 0", "29 0"}, str(keys(ser, m)))
+
+    # -- malformed input ---------------------------------------------------------
+    import struct as st
+    bad_cases = [
+        ("unknown message type", b"\x63"),
+        ("SetEncodings with too many encodings", st.pack(">BxH", 2, 65) + b"\0" * 260),
+        ("ClientCutText larger than the limit", st.pack(">BxxxI", 6, 2 << 20)),
+        ("colour-map pixel format", st.pack(">BxxxBBBBHHHBBBxxx", 0, 8, 8, 0, 0, 7, 7, 3, 5, 2, 0)),
+        ("pixel format with max not 2^n-1", st.pack(">BxxxBBBBHHHBBBxxx", 0, 32, 24, 0, 1, 200, 255, 255, 16, 8, 0)),
+        ("pixel format with 24 bits per pixel", st.pack(">BxxxBBBBHHHBBBxxx", 0, 24, 24, 0, 1, 255, 255, 255, 16, 8, 0)),
+        ("pixel format whose shift overflows the pixel", st.pack(">BxxxBBBBHHHBBBxxx", 0, 16, 16, 0, 1, 31, 63, 31, 14, 5, 0)),
+    ]
+    for name, payload in bad_cases:
+        c = RFB(vport, password=VNC_PW)
+        c.send(payload)
+        check(f"vnc: {name} closes the connection", closed(c))
+        c.close()
+    c = RFB(vport, password=VNC_PW)
+    c.set_encodings([0])
+    text = os.urandom(4096)
+    c.send(st.pack(">BxxxI", 6, len(text)))
+    for i in range(0, len(text), 1500):
+        c.send(text[i:i + 1500]); time.sleep(0.05)
+    c.request(0)
+    try:
+        c.read_update()
+        ok = True
+    except Exception as e:
+        ok = False
+    check("vnc: a 4 KiB ClientCutText is skipped and the stream stays in sync", ok)
+    c.close()
+
+    # -- limits -------------------------------------------------------------------
+    held = [RFB(vport, password=VNC_PW) for _ in range(4)]
+    s = socket.create_connection(("127.0.0.1", vport), timeout=5)
+    s.settimeout(4)
+    try:
+        first = s.recv(12)
+    except OSError:
+        first = b""
+    check("vnc: a connection beyond max_clients is closed without a banner", first == b"", repr(first))
+    s.close()
+    check("vnc: the limit is shared with HTTP (503)", get(port, "/")[0] == 503)
+    for h in held:
+        h.close()
+    time.sleep(1.5)
+    c = RFB(vport, password=VNC_PW)
+    check("vnc: slots are reclaimed after clients leave", c.w == W)
+    c.close()
+
+    # -- lockout (the guest loads the module with vnc_lockout=4) --------------------
+    for _ in range(5):
+        try:
+            RFB(vport, password="wrongpw1")
+        except RFBError:
+            pass
+    s = socket.create_connection(("127.0.0.1", vport), timeout=5)
+    s.settimeout(3)
+    try:
+        banner = s.recv(12)
+    except OSError:
+        banner = b""
+    s.close()
+    check("vnc: 5 failed logins lock the source out (no banner while locked)", banner == b"", repr(banner))
+    time.sleep(4.5)
+    try:
+        c = RFB(vport, password=VNC_PW)
+        ok = c.w == W
+        c.close()
+    except Exception as e:
+        ok = False
+    check("vnc: the lockout expires and a correct password works again", ok)
+    for _ in range(4):                                    # fewer than 5 failures, then a success: the count resets
+        try:
+            RFB(vport, password="wrongpw1")
+        except RFBError:
+            pass
+    RFB(vport, password=VNC_PW).close()
+    for _ in range(4):
+        try:
+            RFB(vport, password="wrongpw1")
+        except RFBError:
+            pass
+    c = RFB(vport, password=VNC_PW)
+    check("vnc: a successful login resets the failure count", c.w == W)
+    c.close()
 
 
 def main():
@@ -529,6 +794,7 @@ def main():
     ap.add_argument("--no-hvf", action="store_true")
     a = ap.parse_args()
     port, ser_port = random.randint(20000, 30000), random.randint(30001, 40000)
+    vport = random.randint(40001, 50000)
 
     accel = ["-accel", "tcg", "-cpu", "cortex-a72"] if a.no_hvf else ["-accel", "hvf", "-cpu", "host"]
     q = subprocess.Popen([a.qemu, "-M", "virt", *accel, "-m", "2048", "-smp", "2", "-kernel", a.image,
@@ -536,7 +802,8 @@ def main():
                           "console=ttyAMA0 loglevel=7 vt.global_cursor_default=0 panic=-1",
                           "-display", "none", "-monitor", "none",
                           "-serial", f"tcp:127.0.0.1:{ser_port},server=on,wait=off",
-                          "-nic", f"user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:8080"])
+                          "-nic", f"user,model=virtio-net-pci,hostfwd=tcp:127.0.0.1:{port}-:8080,"
+                                 f"hostfwd=tcp:127.0.0.1:{vport}-:5900"])
     ser = Serial(ser_port)
     try:
         if not ser.wait(r"^READY$", 180):
@@ -555,7 +822,8 @@ def main():
         t_protocol(port)
         t_keyboard(port, ser)
         t_limits(port)
-        t_unload(port, ser)
+        t_vnc(vport, port, ser)
+        t_unload(port, ser, vport)
         time.sleep(1)
         splats = [l for l in ser.since(0) if SPLAT.search(l)]
         check("no kernel splats (KASAN/lockdep/BUG/WARN) in the whole run", not splats, "; ".join(splats[:3]))

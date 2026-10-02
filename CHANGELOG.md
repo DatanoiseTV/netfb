@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format follows
 [Semantic Versioning](https://semver.org/); before 1.0.0 a minor version may change
 the wire protocol or module parameters.
 
+## [Unreleased]
+
+### Added
+- VNC (RFB 3.3/3.7/3.8) server: `vnc_port`, `vnc_password`, `vnc_lockout`. Raw and ZRLE
+  encodings, any true-colour pixel format, key events, VNC Authentication with a
+  per-address lockout after repeated failures.
+- `ping <n>` text command in the WebSocket protocol (answered with a pong), used for the
+  round-trip readout.
+
+### Changed
+- The client wake-up on incoming data (`sk_data_ready`) is shared by the WebSocket and
+  VNC sessions.
+
 ## [0.1.0] - 2026-10-02
 
 First release.

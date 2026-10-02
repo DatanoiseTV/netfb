@@ -36,6 +36,7 @@
 #define NETFB_WS_PAYLOAD_MAX	60000
 
 struct netfb_server;
+struct sock;
 
 struct netfb {
 	struct fb_info *info;
@@ -63,10 +64,19 @@ struct netfb {
 
 #define NETFB_MAX_KEYCODE	256
 
+enum netfb_proto {
+	NETFB_PROTO_HTTP,
+	NETFB_PROTO_VNC,
+	NETFB_PROTO_MAX,
+};
+
 struct netfb_net_cfg {
 	__be32 addr;
 	u16 port;
 	const char *token;	/* NULL or empty: no authentication */
+	u16 vnc_port;		/* 0: no VNC listener */
+	const char *vnc_password; /* NULL: RFB security type "None" */
+	unsigned int vnc_lockout; /* seconds a source is locked out after repeated failed logins; 0: off */
 	unsigned int max_clients;
 	unsigned int max_fps;
 };
@@ -79,6 +89,9 @@ struct netfb_conn {
 	struct list_head node;
 	__be32 peer;
 	atomic_t done;
+	enum netfb_proto proto;
+	bool rx_pending;	/* set by sk_data_ready: the client sent something */
+	void (*old_data_ready)(struct sock *sk);
 };
 
 /* netfb_fb.c */
@@ -92,10 +105,19 @@ int netfb_send_all(struct socket *sock, const void *buf, size_t len);
 int netfb_info_json(const struct netfb *nf, unsigned int max_fps, char *buf,
 		    size_t size);
 unsigned int netfb_srv_max_fps(const struct netfb_server *srv);
+const char *netfb_srv_vnc_password(const struct netfb_server *srv);
+bool netfb_auth_locked(struct netfb_server *srv, __be32 ip);
+void netfb_auth_failed(struct netfb_server *srv, __be32 ip);
+void netfb_auth_ok(struct netfb_server *srv, __be32 ip);
+void netfb_conn_hook_rx(struct netfb_conn *c);
+void netfb_conn_unhook_rx(struct netfb_conn *c);
 bool netfb_srv_stopping(const struct netfb_server *srv);
 
 /* netfb_ws.c */
 void netfb_ws_run(struct netfb_conn *c);
+
+/* netfb_vnc.c */
+void netfb_vnc_run(struct netfb_conn *c);
 
 /* netfb_web.c */
 extern const u8 netfb_web_gz[];

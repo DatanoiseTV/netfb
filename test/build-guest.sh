@@ -7,7 +7,7 @@ V=${1:?kernel version}
 K=/vol/linux-$V
 
 # Built-in kernel: its exported symbols are all the module needs to resolve against.
-[ -f $K/Module.symvers ] || cp $K/vmlinux.symvers $K/Module.symvers
+cp $K/vmlinux.symvers $K/Module.symvers
 
 rm -rf /tmp/mod /tmp/rootfs && mkdir /tmp/mod /tmp/rootfs
 cp -r /src/. /tmp/mod/ && cd /tmp/mod
