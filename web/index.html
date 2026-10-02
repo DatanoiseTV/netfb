@@ -254,7 +254,7 @@ const S = {
   retry: 0, timer: 0, tick: 0, capture: false, held: new Set(),
   img: null, dst: null, decode: null,
   dirtyMin: Infinity, dirtyMax: -1, raf: 0,
-  frames: 0, bytes: 0, total: 0,
+  frames: 0, bytes: 0, total: 0, rawBytes: 0, rawTotal: 0, scratch: null,
 };
 
 // ---- token ---------------------------------------------------------------
@@ -349,14 +349,51 @@ function flush() {
   S.frames++;
 }
 
+// LZ4 block decoder (https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md).
+// Writes dst[0..n) and returns the decoded length, or -1 on malformed input.
+function lz4Block(src, si, se, dst) {
+  const dn = dst.length;
+  let di = 0;
+  while (si < se) {
+    const tok = src[si++];
+    let len = tok >> 4;
+    if (len === 15) { let b; do { if (si >= se) return -1; b = src[si++]; len += b; } while (b === 255); }
+    if (si + len > se || di + len > dn) return -1;
+    dst.set(src.subarray(si, si + len), di); si += len; di += len;
+    if (si >= se) break;                       // the last sequence has literals only
+    if (si + 2 > se) return -1;
+    const off = src[si] | (src[si + 1] << 8); si += 2;
+    let m = tok & 15;
+    if (m === 15) { let b; do { if (si >= se) return -1; b = src[si++]; m += b; } while (b === 255); }
+    m += 4;
+    if (!off || off > di || di + m > dn) return -1;
+    if (off >= m) { dst.copyWithin(di, di - off, di - off + m); di += m; }
+    else for (let i = 0; i < m; i++, di++) dst[di] = dst[di - off];   // overlapping run
+  }
+  return di;
+}
+
 function onPixels(buf) {
   const info = S.info;
   if (!info || buf.byteLength < 8) return;
   const dv = new DataView(buf);
   if (dv.getUint8(0) !== 1) return;
-  const y = dv.getUint16(2, true), h = dv.getUint16(4, true);
-  if (!h || y + h > info.height || buf.byteLength !== 8 + h * info.stride) return;
-  S.decode(buf, y, h);
+  const flags = dv.getUint8(1), y = dv.getUint16(2, true), h = dv.getUint16(4, true);
+  const raw = h * info.stride;
+  if (!h || y + h > info.height) return;
+  if (flags & 1) {
+    // Decompress into a scratch buffer laid out like an uncompressed message,
+    // so the pixel decoders (which read at byte offset 8) are shared.
+    if (!S.scratch || S.scratch.byteLength < 8 + raw) S.scratch = new ArrayBuffer(8 + Math.max(raw, 65536));
+    const out = new Uint8Array(S.scratch, 8, raw);
+    if (lz4Block(new Uint8Array(buf), 8, buf.byteLength, out) !== raw) return;
+    S.rawBytes += raw;
+    S.decode(S.scratch, y, h);
+  } else {
+    if (buf.byteLength !== 8 + raw) return;
+    S.rawBytes += raw;
+    S.decode(buf, y, h);
+  }
   if (y < S.dirtyMin) S.dirtyMin = y;
   if (y + h - 1 > S.dirtyMax) S.dirtyMax = y + h - 1;
   if (!S.raf) S.raf = requestAnimationFrame(flush);
@@ -558,7 +595,8 @@ document.addEventListener("fullscreenchange", layout);
 setInterval(() => {
   $("fpsNow").textContent = S.frames; S.frames = 0;
   $("rate").textContent = fmtBytes(S.bytes) + "/s"; S.bytes = 0;
-  $("total").textContent = fmtBytes(S.total) + " received";
+  S.rawTotal += S.rawBytes; S.rawBytes = 0;
+  $("total").textContent = fmtBytes(S.total) + " received" + (S.total ? ` (×${(S.rawTotal / S.total).toFixed(1)} compressed)` : "");
 }, 1000);
 
 // ---- boot ----------------------------------------------------------------

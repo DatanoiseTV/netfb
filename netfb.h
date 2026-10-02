@@ -13,7 +13,10 @@
  * Wire format of a pixel update (WebSocket binary message payload):
  *
  *   u8     type      1 = pixel rows
- *   u8     flags     0
+ *   u8     flags     bit 0: data[] is one LZ4 block (kernel LZ4_compress_default
+ *                    output, i.e. the standard LZ4 block format, no frame) that
+ *                    decompresses to exactly h * width * bytes_per_pixel bytes.
+ *                    Cleared: data[] is the raw rows.
  *   __le16 y         first row
  *   __le16 h         number of rows
  *   __le16 reserved  0
@@ -25,6 +28,7 @@
  * WebSocket length form and a row never exceeds a message.
  */
 #define NETFB_MSG_PIXELS	1
+#define NETFB_MSG_F_LZ4		0x01
 #define NETFB_MSG_HDR_LEN	8
 #define NETFB_MAX_DIM		8192
 #define NETFB_MAX_ROWBYTES	32768

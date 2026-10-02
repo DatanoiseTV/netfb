@@ -17,6 +17,7 @@
 #include <asm/unaligned.h>
 #endif
 #include <linux/jiffies.h>
+#include <linux/lz4.h>
 #include <linux/kthread.h>
 #include <linux/mm.h>
 #include <linux/sched.h>
@@ -43,6 +44,7 @@ struct ws {
 	struct netfb_conn *c;
 	struct netfb *nf;
 	u8 *tx;			/* WS_HDR_LEN + NETFB_MSG_HDR_LEN + pixels */
+	void *lz4wrk;		/* LZ4_MEM_COMPRESS scratch */
 	u8 rx[RX_BUF];
 	size_t rxlen;
 	u64 last;		/* last generation sent to this client */
@@ -88,19 +90,36 @@ static int ws_send_rows(struct ws *w, u32 y, u32 h)
 {
 	struct netfb *nf = w->nf;
 	u8 *msg = w->tx + WS_HDR_LEN;
-	size_t plen = NETFB_MSG_HDR_LEN + (size_t)h * nf->rowbytes;
+	const u8 *src = nf->vmem + (size_t)y * nf->rowbytes;
+	size_t raw = (size_t)h * nf->rowbytes;
+	size_t plen = NETFB_MSG_HDR_LEN;
+	u8 flags = 0;
+	int clen;
+
+	/*
+	 * A limit of raw - 1 makes LZ4 give up (return 0) when the data does not
+	 * shrink, in which case the rows go out as they are. The source may change
+	 * underneath us; that only tears the picture, it cannot corrupt the block.
+	 */
+	clen = LZ4_compress_default(src, msg + NETFB_MSG_HDR_LEN, raw, raw - 1,
+				    w->lz4wrk);
+	if (clen > 0) {
+		flags = NETFB_MSG_F_LZ4;
+		plen += clen;
+	} else {
+		memcpy(msg + NETFB_MSG_HDR_LEN, src, raw);
+		plen += raw;
+	}
 
 	w->tx[0] = 0x80 | WS_OP_BIN;
 	w->tx[1] = 126;
 	put_unaligned_be16(plen, w->tx + 2);
 
 	msg[0] = NETFB_MSG_PIXELS;
-	msg[1] = 0;
+	msg[1] = flags;
 	put_unaligned_le16(y, msg + 2);
 	put_unaligned_le16(h, msg + 4);
 	put_unaligned_le16(0, msg + 6);
-	memcpy(msg + NETFB_MSG_HDR_LEN, nf->vmem + (size_t)y * nf->rowbytes,
-	       (size_t)h * nf->rowbytes);
 
 	return netfb_send_all(w->c->sock, w->tx, WS_HDR_LEN + plen);
 }
@@ -286,7 +305,8 @@ void netfb_ws_run(struct netfb_conn *c)
 	if (!w)
 		return;
 	w->tx = kvmalloc(WS_HDR_LEN + NETFB_WS_PAYLOAD_MAX, GFP_KERNEL);
-	if (!w->tx)
+	w->lz4wrk = kmalloc(LZ4_MEM_COMPRESS, GFP_KERNEL);
+	if (!w->tx || !w->lz4wrk)
 		goto out;
 	w->c = c;
 	w->nf = nf;
@@ -330,5 +350,6 @@ out:
 	for_each_set_bit(n, w->keys, NETFB_MAX_KEYCODE)
 		netfb_key(nf, n, false);
 	kvfree(w->tx);
+	kfree(w->lz4wrk);
 	kfree(w);
 }

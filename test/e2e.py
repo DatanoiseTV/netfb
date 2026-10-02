@@ -75,6 +75,35 @@ class Serial:
         return None
 
 
+def lz4_block(src, raw_len):
+    """Independent LZ4 block decoder (spec: lz4_Block_format.md), strict about bounds."""
+    out, i = bytearray(), 0
+    while i < len(src):
+        tok = src[i]; i += 1
+        n = tok >> 4
+        if n == 15:
+            while True:
+                b = src[i]; i += 1; n += b
+                if b != 255:
+                    break
+        out += src[i:i + n]; i += n
+        if i >= len(src):
+            break
+        off = src[i] | (src[i + 1] << 8); i += 2
+        m = tok & 15
+        if m == 15:
+            while True:
+                b = src[i]; i += 1; m += b
+                if b != 255:
+                    break
+        m += 4
+        assert 0 < off <= len(out), "bad LZ4 offset"
+        for _ in range(m):
+            out.append(out[-off])
+    assert len(out) == raw_len, f"LZ4 decoded {len(out)} bytes, expected {raw_len}"
+    return bytes(out)
+
+
 # ---- HTTP / WebSocket ----------------------------------------------------
 def http(port, request, timeout=10):
     """Send raw bytes, return (status, headers dict, body)."""
@@ -121,6 +150,7 @@ class WS:
         want = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
         self.accept_ok = want in head.decode()
         self.info, self.msgs = None, []          # msgs: (time, y, h)
+        self.wire, self.lz4 = [], []             # per message: payload bytes, was LZ4
         self.px = bytearray(W * H * 4)
         self.closed = None
 
@@ -176,9 +206,15 @@ class WS:
         elif op == 2 and p[0] == 1:
             y, h = struct.unpack("<HH", p[2:6])
             stride = W * 4
-            assert len(p) == 8 + h * stride, "bad message length"
-            self.px[y * stride:(y + h) * stride] = p[8:]
+            if p[1] & 1:
+                data = lz4_block(p[8:], h * stride)
+            else:
+                assert len(p) == 8 + h * stride, "bad message length"
+                data = p[8:]
+            self.px[y * stride:(y + h) * stride] = data
             self.msgs.append((time.time(), y, h))
+            self.wire.append(len(p))
+            self.lz4.append(bool(p[1] & 1))
         elif op == 8:
             self.closed = struct.unpack(">H", p[:2])[0] if len(p) >= 2 else 0
         return op
@@ -325,6 +361,9 @@ def t_controls(port, ws):
     mark = len(ws.msgs)
     ws.pump(lambda: ws.rows_received(mark) >= H, 5)
     check("'full' resends every row", ws.rows_received(mark) >= H)
+    wire, raw = sum(ws.wire[mark:]), ws.rows_received(mark) * W * 4
+    check("uniform frame is LZ4-compressed on the wire (>= 20x)", all(ws.lz4[mark:]) and raw >= 20 * wire,
+          f"{raw} raw -> {wire} wire, lz4={ws.lz4[mark:]}")
     for c in ("fps 1", "bogus command", "fps abc", "fps 99999"):
         ws.cmd(c)
     ws.pump(timeout=0.5)
