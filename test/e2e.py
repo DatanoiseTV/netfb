@@ -743,6 +743,15 @@ def t_vnc(vport, port, ser):
     check("vnc: the limit is shared with HTTP (503)", get(port, "/")[0] == 503)
     for h in held:
         h.close()
+    # No pause here on purpose: a slot is only free once the dying session has been reaped, and
+    # a newcomer arriving at once must not be turned away because that has not happened yet.
+    try:
+        c = RFB(vport, password=VNC_PW)
+        ok = c.w == W
+        c.close()
+    except Exception:
+        ok = False
+    check("vnc: a client connecting right after others hung up is accepted", ok)
     time.sleep(1.5)
     c = RFB(vport, password=VNC_PW)
     check("vnc: slots are reclaimed after clients leave", c.w == W)

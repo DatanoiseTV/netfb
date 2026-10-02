@@ -14,6 +14,11 @@ the wire protocol or module parameters.
 - `ping <n>` text command in the WebSocket protocol (answered with a pong), used for the
   round-trip readout.
 
+### Fixed
+- A client connecting right after others hung up could be refused as "busy" because the
+  finished sessions had not been reaped yet; the accept thread now waits up to 300 ms for
+  such slots (contributed by ategus, PR #1).
+
 ### Changed
 - The client wake-up on incoming data (`sk_data_ready`) is shared by the WebSocket and
   VNC sessions.

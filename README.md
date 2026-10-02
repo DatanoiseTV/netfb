@@ -235,8 +235,9 @@ Known gaps:
   three runs; one earlier run died with a harness traceback I did not capture). No
   kmemleak run.
 - Only arm64 exercised, no mouse input, IPv4 only.
-- VNC is verified against the test suite's own client and vncdotool, not against macOS
-  Screen Sharing, TigerVNC or RealVNC.
+- VNC is verified against the test suite's own client and vncdotool. A contributor
+  reports that macOS Screen Sharing connects, shows the console and types into it; I
+  have not confirmed that, nor tried TigerVNC or RealVNC.
 
 ## License
 
