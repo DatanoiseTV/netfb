@@ -21,6 +21,7 @@
 #include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/rcupdate.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -697,6 +698,8 @@ void netfb_net_stop(struct netfb *nf)
 
 	kthread_stop(srv->accept_task);
 	reap_conns(srv, true);
+	/* A data_ready callback may still be executing module text on another CPU. */
+	synchronize_rcu();
 	sock_release(srv->listen);
 	crypto_free_shash(srv->sha1);
 	kfree_sensitive(srv->token);

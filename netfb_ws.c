@@ -45,6 +45,8 @@ struct ws {
 	struct netfb *nf;
 	u8 *tx;			/* WS_HDR_LEN + NETFB_MSG_HDR_LEN + pixels */
 	void *lz4wrk;		/* LZ4_MEM_COMPRESS scratch */
+	bool rx_pending;	/* set by sk_data_ready: the client sent something */
+	void (*old_data_ready)(struct sock *sk);
 	u8 rx[RX_BUF];
 	size_t rxlen;
 	u64 last;		/* last generation sent to this client */
@@ -269,26 +271,83 @@ static int ws_parse_rx(struct ws *w)
 	return 0;
 }
 
+/*
+ * Drain the socket. A client that floods us is cut after a bounded number of
+ * reads per call; rx_pending is re-armed so the rest is handled next round.
+ */
 static int ws_poll_rx(struct ws *w)
 {
-	struct msghdr msg = {};
-	struct kvec iov;
-	int n;
+	int round, ret;
 
-	if (w->rxlen == RX_BUF)
-		return ws_close(w->c, 1009);
+	WRITE_ONCE(w->rx_pending, false);
+	for (round = 0; round < 16; round++) {
+		struct msghdr msg = {};
+		struct kvec iov;
+		int n;
 
-	iov.iov_base = w->rx + w->rxlen;
-	iov.iov_len = RX_BUF - w->rxlen;
-	n = kernel_recvmsg(w->c->sock, &msg, &iov, 1, iov.iov_len, MSG_DONTWAIT);
-	if (n == -EAGAIN)
-		return 0;
-	if (n < 0)
-		return n;
-	if (!n)
-		return -ECONNRESET;
-	w->rxlen += n;
-	return ws_parse_rx(w);
+		if (w->rxlen == RX_BUF)
+			return ws_close(w->c, 1009);
+
+		iov.iov_base = w->rx + w->rxlen;
+		iov.iov_len = RX_BUF - w->rxlen;
+		n = kernel_recvmsg(w->c->sock, &msg, &iov, 1, iov.iov_len,
+				   MSG_DONTWAIT);
+		if (n == -EAGAIN)
+			return 0;
+		if (n < 0)
+			return n;
+		if (!n)
+			return -ECONNRESET;
+		w->rxlen += n;
+		ret = ws_parse_rx(w);
+		if (ret)
+			return ret;
+	}
+	WRITE_ONCE(w->rx_pending, true);
+	return 0;
+}
+
+/*
+ * Runs in softirq context for every segment that carries data (or the FIN).
+ * Waking the session here is what keeps input latency at the network RTT
+ * instead of the wait timeout.
+ */
+static void ws_data_ready(struct sock *sk)
+{
+	struct ws *w;
+
+	read_lock_bh(&sk->sk_callback_lock);
+	w = sk->sk_user_data;
+	if (w) {
+		WRITE_ONCE(w->rx_pending, true);
+		wake_up_interruptible(&w->nf->wq);
+		w->old_data_ready(sk);
+	}
+	read_unlock_bh(&sk->sk_callback_lock);
+}
+
+static void ws_hook_socket(struct ws *w)
+{
+	struct sock *sk = w->c->sock->sk;
+
+	write_lock_bh(&sk->sk_callback_lock);
+	w->old_data_ready = sk->sk_data_ready;
+	sk->sk_user_data = w;
+	sk->sk_data_ready = ws_data_ready;
+	write_unlock_bh(&sk->sk_callback_lock);
+}
+
+static void ws_unhook_socket(struct ws *w)
+{
+	struct sock *sk;
+
+	if (!w->old_data_ready)		/* never hooked */
+		return;
+	sk = w->c->sock->sk;
+	write_lock_bh(&sk->sk_callback_lock);
+	sk->sk_data_ready = w->old_data_ready;
+	sk->sk_user_data = NULL;
+	write_unlock_bh(&sk->sk_callback_lock);
 }
 
 /* ---- session ------------------------------------------------------------ */
@@ -304,29 +363,29 @@ void netfb_ws_run(struct netfb_conn *c)
 	w = kzalloc(sizeof(*w), GFP_KERNEL);
 	if (!w)
 		return;
+	w->c = c;
+	w->nf = nf;
 	w->tx = kvmalloc(WS_HDR_LEN + NETFB_WS_PAYLOAD_MAX, GFP_KERNEL);
 	w->lz4wrk = kmalloc(LZ4_MEM_COMPRESS, GFP_KERNEL);
 	if (!w->tx || !w->lz4wrk)
 		goto out;
-	w->c = c;
-	w->nf = nf;
 	ws_set_interval(w, netfb_srv_max_fps(c->srv));
 
 	n = netfb_info_json(nf, netfb_srv_max_fps(c->srv), json, sizeof(json));
 	if (ws_send_small(c->sock, WS_OP_TEXT, json, n))
 		goto out;
 
+	ws_hook_socket(w);
+
 	while (!kthread_should_stop() && !netfb_srv_stopping(c->srv)) {
-		if (w->paused) {
-			schedule_timeout_interruptible(msecs_to_jiffies(100));
-		} else {
-			wait_event_interruptible_timeout(nf->wq,
-				READ_ONCE(nf->gen) != w->last ||
-				kthread_should_stop() || netfb_srv_stopping(c->srv),
-				msecs_to_jiffies(WAIT_MS));
-			if (kthread_should_stop() || netfb_srv_stopping(c->srv))
-				break;
-		}
+		/* Wake for damage, for client data, or to re-check every WAIT_MS. */
+		wait_event_interruptible_timeout(nf->wq,
+			(!w->paused && READ_ONCE(nf->gen) != w->last) ||
+			READ_ONCE(w->rx_pending) ||
+			kthread_should_stop() || netfb_srv_stopping(c->srv),
+			msecs_to_jiffies(WAIT_MS));
+		if (kthread_should_stop() || netfb_srv_stopping(c->srv))
+			break;
 		if (ws_poll_rx(w))
 			goto out;
 
@@ -341,12 +400,18 @@ void netfb_ws_run(struct netfb_conn *c)
 			if (ws_send_dirty(w))
 				goto out;
 			w->last = g;
-			/* Rate limit; also coalesces bursts of small damage. */
-			schedule_timeout_interruptible(w->interval);
+			/*
+			 * Rate limit; also coalesces bursts of small damage. Client
+			 * data still cuts the pause short so input is never delayed.
+			 */
+			wait_event_interruptible_timeout(nf->wq,
+				READ_ONCE(w->rx_pending) || kthread_should_stop() ||
+				netfb_srv_stopping(c->srv), w->interval);
 		}
 	}
 	ws_close(c, 1001);	/* going away: module unload */
 out:
+	ws_unhook_socket(w);
 	for_each_set_bit(n, w->keys, NETFB_MAX_KEYCODE)
 		netfb_key(nf, n, false);
 	kvfree(w->tx);

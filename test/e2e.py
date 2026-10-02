@@ -437,6 +437,18 @@ def t_keyboard(port, ser):
     ser.wait(r"KEY 30 0", 5, m)
     ev = keys(ser, m)
     check("key down+up reach the guest input device in order", ev == ["30 1", "30 0"], str(ev))
+    # Input latency: the session must wake on client data, not on its poll timeout
+    # (200 ms), so the worst case over several samples has to stay far below that.
+    lat = []
+    for i in range(12):
+        m = ser.mark()
+        t0 = time.time()
+        w.cmd("key 44 1")
+        w.cmd("key 44 0")
+        ser.wait(r"KEY 44 0", 3, m)
+        lat.append((time.time() - t0) * 1000)
+        time.sleep(0.31)                      # land at different points of the session's wait cycle
+    check("key latency: worst of 12 under 120 ms", max(lat) < 120, f"max {max(lat):.0f} ms, all {[round(x) for x in lat]}")
     m = ser.mark()
     for bad in ("key 0 1", "key 256 1", "key 999 1", "key 30 2", "key abc", "key 30", "key -1 1"):
         w.cmd(bad)
