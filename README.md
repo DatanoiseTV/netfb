@@ -48,6 +48,33 @@ then open `http://127.0.0.1:8080/`. Parameters:
 With a token, open `http://host:8080/?token=...` (the UI removes it from the URL),
 or enter it in the prompt the UI shows.
 
+## Web UI
+
+One self-contained page (no external requests). Floating dock, live statistics
+(rate with sparkline, round-trip time, compression ratio), an ambient glow sampled
+from the screen, a command palette (Cmd/Ctrl+K or `/`), screenshot (save or copy),
+video recording, fullscreen, and a menu for Ctrl+Alt+Del, Alt+Tab and virtual
+console switching. Light and dark themes follow the system; the layout works on
+phones.
+
+Keyboard (needs `keyboard=1`): click the screen or press `K`. A rotating ring marks
+capture; Ctrl+Alt+K (Control+Option+K on a Mac) releases it. Keys are sent as Linux
+key codes to a US-keymap guest, so typing is handled for other layouts and for macOS:
+
+- **Characters** mode (default) types what is printed on your keycaps: a German
+  keyboard's Z key types `z`, Option+L (`@`) types `@` without Alt, Shift+7 (`/`)
+  types `/` without Shift. **Physical keys** mode sends key positions instead.
+- macOS delivers no key-up for keys pressed while Cmd is held, so they are released
+  automatically; Cmd can send Super (default) or Ctrl. Caps Lock is a single event
+  per toggle on a Mac and is handled as one; in Characters mode case comes from the
+  characters themselves.
+- Cmd+V (Ctrl+Shift+V elsewhere) types the clipboard into the machine. Held keys are
+  released on blur, on tab switch and when the connection drops.
+- Shortcuts are matched by the character on the key, not its position, and shown
+  with the platform's glyphs. On Chromium in fullscreen the Keyboard Lock API lets the
+  page see Esc and Cmd combinations; otherwise the browser keeps Cmd+W, Cmd+T, Cmd+Q.
+- Touch devices get the on-screen keyboard through a hidden input.
+
 ## Security model
 
 The server runs in the kernel and parses network input, so it is deliberately
@@ -77,7 +104,8 @@ then binary messages, all little-endian:
 
 `data` is `h * stride` bytes of rows in the announced format, or one LZ4 block
 that decodes to exactly that. Client text commands: `pause`, `resume`, `full`,
-`fps <n>`, `key <linux keycode> <0|1>`.
+`fps <n>`, `key <linux keycode> <0|1>`, `ping <n>` (answered with
+`{"type":"pong","t":n}`).
 
 ## Unloading
 
@@ -94,7 +122,11 @@ Connected clients receive a close frame (1001).
 it from the host with a raw HTTP/WebSocket client: auth, Origin, malformed input,
 partial updates, `write()` and `mmap()` drawing, pause, compression, keyboard
 latency, held-key release, connection limits, unload with a client attached, and a
-scan of the console for kernel splats. `test/build-guest.sh` builds the initramfs
+scan of the console for kernel splats. `test/browser.py` loads the real UI in headless Chrome and checks it goes live without
+console errors; `test/browser_keys.py` drives it with real key events (layouts, macOS
+Cmd/Option/Caps Lock behaviour, paste, touch keyboard) and checks the exact key codes
+sent. Both need Chrome (`CHROME=` overrides the path) and a server loaded with
+`keyboard=1`; the Cmd cases need a Mac. `test/build-guest.sh` builds the initramfs
 inside a container with a built kernel tree; `test/guest/init-demo` is a guest
 with a root shell on the framebuffer console.
 

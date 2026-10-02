@@ -186,7 +186,7 @@ static void ws_set_interval(struct ws *w, unsigned int fps)
 	w->interval = max(1ul, msecs_to_jiffies(1000 / w->fps_cap));
 }
 
-/* Text commands: "pause", "resume", "full", "fps <n>", "key <code> <0|1>". */
+/* Text commands: pause, resume, full, "fps <n>", "key <code> <0|1>", "ping <n>". */
 static void ws_command(struct ws *w, const char *cmd)
 {
 	unsigned int n;
@@ -206,6 +206,15 @@ static void ws_command(struct ws *w, const char *cmd)
 		/* Track holds so a dropped connection cannot leave a key stuck. */
 		__assign_bit(code, w->keys, down);
 		netfb_key(w->nf, code, down);
+	} else if (!strncmp(cmd, "ping ", 5)) {
+		char buf[48];
+		u64 t;
+
+		/* Echo the client's token so the UI can show the round-trip time. */
+		if (!kstrtou64(cmd + 5, 10, &t))
+			ws_send_small(w->c->sock, WS_OP_TEXT, buf,
+				      scnprintf(buf, sizeof(buf),
+						"{\"type\":\"pong\",\"t\":%llu}", t));
 	} else if (!strncmp(cmd, "fps ", 4) && !kstrtouint(cmd + 4, 10, &n)) {
 		ws_set_interval(w, n);
 	}

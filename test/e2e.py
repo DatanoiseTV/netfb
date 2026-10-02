@@ -150,6 +150,7 @@ class WS:
         want = base64.b64encode(hashlib.sha1((key + GUID).encode()).digest()).decode()
         self.accept_ok = want in head.decode()
         self.info, self.msgs = None, []          # msgs: (time, y, h)
+        self.texts = []                          # non-info text messages (pong, ...)
         self.wire, self.lz4 = [], []             # per message: payload bytes, was LZ4
         self.px = bytearray(W * H * 4)
         self.closed = None
@@ -206,7 +207,11 @@ class WS:
 
     def handle(self, op, p):
         if op == 1:
-            self.info = json.loads(p)
+            m = json.loads(p)
+            if m.get("type") == "info":
+                self.info = m
+            else:
+                self.texts.append(m)
         elif op == 2 and p[0] == 1:
             y, h = struct.unpack("<HH", p[2:6])
             stride = W * 4
@@ -373,6 +378,11 @@ def t_controls(port, ws):
     ws.pump(timeout=0.5)
     check("unknown/invalid commands are ignored (connection stays up)", ws.closed is None)
     ws.cmd("fps 60")
+    ws.cmd("ping 4242")
+    ws.cmd("ping nope")
+    ws.pump(lambda: any(m.get("type") == "pong" for m in ws.texts), 3)
+    pongs = [m for m in ws.texts if m.get("type") == "pong"]
+    check("ping <n> -> pong echoing n (bad ping ignored)", pongs == [{"type": "pong", "t": 4242}], str(pongs))
 
 
 def t_second_client_matches(port):

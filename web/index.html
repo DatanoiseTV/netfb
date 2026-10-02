@@ -4,233 +4,418 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#07080b">
 <title>netfb</title>
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e1114'/%3E%3Crect x='6' y='8' width='20' height='13' rx='2' fill='none' stroke='%235eead4' stroke-width='2'/%3E%3Cpath d='M12 25h8' stroke='%235eead4' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop stop-color='%237cf0d8'/%3E%3Cstop offset='1' stop-color='%238b7cff'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='32' height='32' rx='8' fill='%2307080b'/%3E%3Crect x='6' y='8' width='20' height='13' rx='2.5' fill='none' stroke='url(%23g)' stroke-width='2.2'/%3E%3Cpath d='M12 25h8' stroke='url(%23g)' stroke-width='2.2' stroke-linecap='round'/%3E%3C/svg%3E">
 <style>
+@property --a { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+
 :root {
-  --bg: #0b0d10;
-  --bg-grid: rgba(255,255,255,.045);
-  --surface: #12151a;
-  --surface-2: #181c22;
-  --border: #252b33;
-  --border-strong: #343c47;
-  --text: #e6e9ee;
-  --text-dim: #8b94a1;
-  --accent: #5eead4;
-  --accent-ink: #04201c;
+  --bg: #07080b;
+  --glass: rgba(20, 22, 29, .66);
+  --glass-solid: #14161d;
+  --line: rgba(255, 255, 255, .09);
+  --line-strong: rgba(255, 255, 255, .16);
+  --hover: rgba(255, 255, 255, .08);
+  --press: rgba(255, 255, 255, .13);
+  --text: #eef0f5;
+  --dim: #8d95a6;
+  --faint: #596072;
+  --accent: #7cf0d8;
+  --accent2: #8b7cff;
+  --accent-ink: #03211c;
   --live: #4ade80;
   --warn: #fbbf24;
-  --bad: #f87171;
-  --shadow: 0 24px 60px -12px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.06);
-  --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
-  --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --bad: #fb7185;
+  --shadow: 0 30px 80px -20px rgba(0, 0, 0, .8), 0 0 0 1px rgba(255, 255, 255, .07);
+  --pop: 0 18px 50px -12px rgba(0, 0, 0, .7), 0 0 0 1px var(--line);
+  --glow-op: .5;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+  --sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
 }
 @media (prefers-color-scheme: light) {
   :root {
-    --bg: #eef0f3;
-    --bg-grid: rgba(0,0,0,.06);
-    --surface: #ffffff;
-    --surface-2: #f4f5f7;
-    --border: #dde1e7;
-    --border-strong: #c5cbd4;
-    --text: #14181d;
-    --text-dim: #5d6673;
-    --accent: #0f766e;
+    --bg: #eceef3;
+    --glass: rgba(255, 255, 255, .72);
+    --glass-solid: #ffffff;
+    --line: rgba(15, 20, 35, .1);
+    --line-strong: rgba(15, 20, 35, .2);
+    --hover: rgba(15, 20, 35, .06);
+    --press: rgba(15, 20, 35, .11);
+    --text: #12151c;
+    --dim: #5a6275;
+    --faint: #98a0b1;
+    --accent: #0b8f7b;
+    --accent2: #5b4bdc;
     --accent-ink: #ffffff;
     --live: #16a34a;
     --warn: #b45309;
-    --bad: #dc2626;
-    --shadow: 0 20px 50px -14px rgba(20,30,50,.35), 0 0 0 1px rgba(0,0,0,.08);
+    --bad: #e11d48;
+    --shadow: 0 30px 70px -24px rgba(25, 35, 70, .45), 0 0 0 1px rgba(15, 20, 35, .1);
+    --pop: 0 18px 44px -14px rgba(25, 35, 70, .35), 0 0 0 1px var(--line);
+    --glow-op: .16;
   }
 }
 
-* { box-sizing: border-box; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; margin: 0; }
 body {
-  display: flex; flex-direction: column;
-  background: var(--bg); color: var(--text);
-  font: 14px/1.4 var(--sans);
-  -webkit-font-smoothing: antialiased;
-  overflow: hidden;
+  background: var(--bg); color: var(--text); font: 14px/1.4 var(--sans);
+  -webkit-font-smoothing: antialiased; overflow: hidden;
 }
+[hidden] { display: none !important; }
+svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
 
-/* ---- top bar ---- */
-header {
-  flex: none; display: flex; align-items: center; gap: 12px;
-  height: 52px; padding: 0 max(14px, env(safe-area-inset-right)) 0 max(14px, env(safe-area-inset-left));
-  background: var(--surface); border-bottom: 1px solid var(--border);
+/* ---- ambient light: a blurred copy of the screen behind it ---- */
+.ambient { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+.ambient canvas {
+  position: absolute; inset: -12%; width: 124%; height: 124%;
+  filter: blur(70px) saturate(1.7); opacity: var(--glow-op); transition: opacity .6s;
 }
-.brand { display: flex; align-items: center; gap: 9px; font-weight: 650; letter-spacing: .01em; }
-.brand svg { color: var(--accent); }
-.status {
-  display: inline-flex; align-items: center; gap: 8px; height: 26px; padding: 0 11px 0 9px;
-  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-2);
-  font-size: 12px; color: var(--text-dim); white-space: nowrap;
+body.noglow .ambient canvas { opacity: 0; }
+.ambient::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(circle at 50% 120%, color-mix(in srgb, var(--accent2) 14%, transparent), transparent 55%);
 }
-.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-dim); }
-.status[data-state=live] .dot { background: var(--live); box-shadow: 0 0 0 0 var(--live); animation: pulse 2.2s ease-out infinite; }
-.status[data-state=live] { color: var(--text); }
-.status[data-state=paused] .dot { background: var(--warn); }
-.status[data-state=offline] .dot { background: var(--bad); }
-@keyframes pulse {
-  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
-  70%, 100% { box-shadow: 0 0 0 7px transparent; }
-}
-.spacer { flex: 1; }
-.controls { display: flex; align-items: center; gap: 6px; }
-.sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-
-button, select {
-  font: inherit; color: var(--text); cursor: pointer;
-  background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px;
-  height: 32px; padding: 0 10px; display: inline-flex; align-items: center; gap: 7px;
-  transition: background .12s, border-color .12s, transform .06s;
-}
-button:hover, select:hover { background: color-mix(in srgb, var(--surface-2) 70%, var(--text) 8%); border-color: var(--border-strong); }
-button:active { transform: translateY(1px); }
-button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-button svg { flex: none; }
-button[aria-pressed=true] { background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
-button:disabled { opacity: .45; cursor: default; }
-.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface-2); }
-.seg button { border: 0; border-radius: 0; height: 30px; background: transparent; padding: 0 11px; }
-.seg button + button { border-left: 1px solid var(--border); }
-.seg button[aria-pressed=true] { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--text); }
-select { padding-right: 6px; }
 
 /* ---- stage ---- */
 main {
-  position: relative; flex: 1; min-height: 0; overflow: auto;
-  display: grid; place-items: center; padding: 28px;
-  background:
-    radial-gradient(ellipse at 50% 38%, color-mix(in srgb, var(--accent) 7%, transparent), transparent 62%),
-    radial-gradient(circle, var(--bg-grid) 1px, transparent 1.2px) 0 0 / 22px 22px,
-    var(--bg);
+  position: fixed; inset: 0; z-index: 1; display: flex; overflow: auto;
+  padding: 84px 28px 70px; scrollbar-width: thin;
 }
-main:fullscreen { padding: 0; background: #000; }
-main:fullscreen #screen { box-shadow: none; border-radius: 0; }
+#frame { position: relative; margin: auto; flex: none; border-radius: 14px; }
 #screen {
-  display: block; background: #000; border-radius: 6px; box-shadow: var(--shadow);
-  transition: filter .25s, opacity .25s;
+  display: block; background: #000; border-radius: 14px; box-shadow: var(--shadow);
+  transition: filter .35s, opacity .35s;
 }
-#screen.capture { outline: 2px solid var(--accent); outline-offset: 3px; }
-button[hidden] { display: none; }
-#screen.stale { filter: grayscale(.85) brightness(.6); }
-.overlay {
-  position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none;
-  opacity: 0; transition: opacity .2s;
-}
-.overlay.show { opacity: 1; }
-.overlay .card {
-  display: flex; align-items: center; gap: 12px; padding: 12px 18px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent); border: 1px solid var(--border);
-  border-radius: 12px; backdrop-filter: blur(8px); box-shadow: var(--shadow);
-}
-.spinner { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--border-strong); border-top-color: var(--accent); animation: spin .8s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
+#frame.stale #screen { filter: grayscale(1) brightness(.45) blur(1px); }
+main.fs { padding: 0; background: #000; }
+main.fs #frame, main.fs #screen { border-radius: 0; box-shadow: none; }
 
-/* ---- stats bar ---- */
-footer {
-  flex: none; display: flex; align-items: center; gap: 18px; min-height: 34px; padding: 0 16px;
-  background: var(--surface); border-top: 1px solid var(--border);
-  font: 12px/1 var(--mono); color: var(--text-dim); font-variant-numeric: tabular-nums;
+/* capture ring: a slowly rotating accent border while keys are being sent */
+#frame::before {
+  content: ""; position: absolute; inset: -4px; border-radius: 18px; padding: 2px; opacity: 0;
+  background: conic-gradient(from var(--a), var(--accent), var(--accent2), var(--accent));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor; mask-composite: exclude;
+  transition: opacity .3s; animation: spin 7s linear infinite; pointer-events: none;
 }
-footer b { color: var(--text); font-weight: 500; }
-footer .hint { margin-left: auto; font-family: var(--sans); }
-kbd { font: 11px var(--mono); padding: 2px 5px; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 4px; color: var(--text); }
+#frame.capture::before { opacity: 1; }
+main.fs #frame::before { display: none; }
+@keyframes spin { to { --a: 360deg; } }
 
-/* ---- token dialog ---- */
-dialog {
-  width: min(380px, calc(100vw - 32px)); padding: 22px; color: var(--text);
-  background: var(--surface); border: 1px solid var(--border-strong); border-radius: 14px; box-shadow: var(--shadow);
+/* no-signal card */
+.nosignal {
+  position: absolute; inset: 0; border-radius: inherit; display: grid; place-items: center; overflow: hidden;
+  opacity: 0; pointer-events: none; transition: opacity .3s;
 }
-dialog::backdrop { background: rgba(0,0,0,.55); backdrop-filter: blur(3px); }
-dialog h2 { margin: 0 0 4px; font-size: 16px; }
-dialog p { margin: 0 0 14px; color: var(--text-dim); }
-dialog input {
-  width: 100%; height: 38px; padding: 0 12px; font: 13px var(--mono); color: var(--text);
-  background: var(--bg); border: 1px solid var(--border-strong); border-radius: 8px;
+.nosignal.show { opacity: 1; }
+.nosignal::before {
+  content: ""; position: absolute; inset: 0; opacity: .5;
+  background: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 2px, transparent 2px 4px);
+  animation: scan 1.4s linear infinite;
 }
-dialog .err { min-height: 18px; margin: 6px 0 0; color: var(--bad); font-size: 12px; }
-dialog .row { display: flex; justify-content: flex-end; margin-top: 10px; }
-dialog button.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
-dialog button.primary:hover { filter: brightness(1.08); background: var(--accent); }
+@keyframes scan { to { background-position-y: 4px; } }
+.nosignal .card {
+  position: relative; display: flex; align-items: center; gap: 12px; padding: 12px 18px; border-radius: 14px;
+  background: var(--glass); backdrop-filter: blur(16px) saturate(1.5); -webkit-backdrop-filter: blur(16px) saturate(1.5);
+  box-shadow: var(--pop); max-width: calc(100% - 24px);
+}
+.spinner { width: 15px; height: 15px; border-radius: 50%; border: 2px solid var(--line-strong); border-top-color: var(--accent); animation: rot .8s linear infinite; flex: none; }
+@keyframes rot { to { transform: rotate(360deg); } }
+
+/* ---- glass primitives ---- */
+.glass {
+  background: var(--glass); backdrop-filter: blur(20px) saturate(1.6); -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  box-shadow: var(--pop);
+}
+
+/* ---- dock ---- */
+.dock {
+  position: fixed; z-index: 10; top: max(14px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 4px; padding: 5px; border-radius: 16px; max-width: calc(100vw - 20px);
+  transition: opacity .35s, transform .35s;
+}
+.dock.idle { opacity: 0; transform: translateX(-50%) translateY(-8px); pointer-events: none; }
+.brand { display: flex; align-items: center; gap: 9px; padding: 0 10px 0 8px; font-weight: 650; letter-spacing: .01em; }
+.brand .mark { width: 22px; height: 22px; }
+.status { display: inline-flex; align-items: center; gap: 7px; height: 26px; padding: 0 10px 0 8px; border-radius: 999px; font-size: 12px; color: var(--dim); background: var(--hover); white-space: nowrap; }
+.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+.status[data-state=live] { color: var(--text); }
+.status[data-state=live] .dot { background: var(--live); animation: pulse 2.4s ease-out infinite; }
+.status[data-state=paused] .dot { background: var(--warn); }
+.status[data-state=offline] .dot { background: var(--bad); }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 60%, transparent); }
+  70%, 100% { box-shadow: 0 0 0 7px transparent; }
+}
+.sep { width: 1px; height: 22px; background: var(--line); margin: 0 4px; flex: none; }
+.group { display: flex; align-items: center; gap: 2px; }
+
+.btn {
+  position: relative; font: inherit; color: var(--text); cursor: pointer; border: 0; background: transparent;
+  height: 34px; min-width: 34px; padding: 0 9px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  transition: background .12s, transform .06s, color .12s;
+}
+.btn:hover { background: var(--hover); }
+.btn:active { background: var(--press); transform: scale(.96); }
+.btn:focus-visible, .field:focus-visible, .pal-item:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.btn[aria-pressed=true], .btn.on { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent); }
+.btn.rec { color: var(--bad); background: color-mix(in srgb, var(--bad) 14%, transparent); font: 12px var(--mono); font-variant-numeric: tabular-nums; }
+.btn.rec .i { animation: blink 1.2s steps(2, jump-none) infinite; fill: currentColor; stroke: none; }
+@keyframes blink { 50% { opacity: .25; } }
+.btn:disabled { opacity: .4; cursor: default; }
+.seg { display: flex; padding: 2px; border-radius: 12px; background: var(--hover); }
+.seg .btn { height: 30px; min-width: 40px; border-radius: 9px; font-size: 12px; font-weight: 600; }
+.seg .btn[aria-pressed=true] { background: var(--glass-solid); color: var(--text); box-shadow: 0 1px 3px rgba(0,0,0,.35), 0 0 0 1px var(--line); }
+.cta { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 600; font-size: 13px; padding: 0 12px; }
+.cta[aria-pressed=true] { background: var(--accent); color: var(--accent-ink); }
+
+/* tooltips with shortcut chips */
+[data-tip]::after {
+  content: attr(data-tip); position: absolute; top: calc(100% + 10px); left: 50%; transform: translate(-50%, -4px);
+  white-space: nowrap; font-size: 12px; padding: 5px 9px; border-radius: 8px; color: var(--text);
+  background: var(--glass-solid); box-shadow: var(--pop); opacity: 0; pointer-events: none; transition: opacity .12s, transform .12s; z-index: 30;
+}
+[data-tip]:hover::after, [data-tip]:focus-visible::after { opacity: 1; transform: translate(-50%, 0); transition-delay: .35s; }
+
+kbd {
+  font: 600 11px/1 var(--sans); font-family: var(--mono); padding: 3px 5px; min-width: 20px; text-align: center; border-radius: 5px;
+  color: var(--dim); background: var(--hover); box-shadow: inset 0 -1px 0 var(--line-strong);
+}
+
+/* ---- HUD ---- */
+.hud {
+  position: fixed; z-index: 9; left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom));
+  display: flex; align-items: stretch; gap: 14px; padding: 9px 14px; border-radius: 14px; font: 12px/1.25 var(--mono);
+  font-variant-numeric: tabular-nums; color: var(--dim); transition: opacity .35s;
+}
+.hud.idle { opacity: 0; pointer-events: none; }
+.hud .res { display: flex; flex-direction: column; justify-content: center; gap: 2px; padding-right: 14px; border-right: 1px solid var(--line); }
+.hud .res b { color: var(--text); font-weight: 600; font-size: 13px; }
+.hud .m { display: flex; flex-direction: column; justify-content: center; gap: 2px; min-width: 52px; }
+.hud .m b { color: var(--text); font-weight: 600; font-size: 13px; }
+.hud .m small { font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--faint); font-family: var(--sans); }
+#spark { width: 84px; height: 28px; align-self: center; }
+
+.kbdchip {
+  position: fixed; z-index: 9; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom));
+  display: flex; align-items: center; gap: 9px; padding: 9px 13px; border-radius: 14px; color: var(--dim); font-size: 12.5px;
+  transition: opacity .35s, color .2s;
+}
+.kbdchip.idle { opacity: 0; pointer-events: none; }
+.kbdchip.on { color: var(--accent); }
+.kbdchip.on .i { filter: drop-shadow(0 0 6px var(--accent)); }
+
+/* Receives the on-screen keyboard's input on touch devices; never visible. */
+.softkb { position: fixed; left: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; border: 0; padding: 0; font-size: 16px; pointer-events: none; }
+
+/* ---- toasts ---- */
+.toasts { position: fixed; z-index: 40; left: 50%; bottom: 84px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; }
+.toast { padding: 9px 15px; border-radius: 12px; font-size: 13px; animation: tin .22s ease-out; }
+.toast.out { opacity: 0; transform: translateY(6px); transition: .3s; }
+@keyframes tin { from { opacity: 0; transform: translateY(8px) scale(.97); } }
+
+/* ---- menus ---- */
+.menu {
+  position: fixed; z-index: 20; min-width: 250px; max-width: calc(100vw - 20px); padding: 6px; border-radius: 14px; animation: mpop .14s ease-out;
+}
+@keyframes mpop { from { opacity: 0; transform: translateY(-4px) scale(.98); } }
+.menu h4 { margin: 8px 10px 4px; font: 600 10.5px var(--sans); letter-spacing: .08em; text-transform: uppercase; color: var(--faint); }
+.mi { width: 100%; justify-content: space-between; font-size: 13px; height: 34px; }
+.mi span { display: flex; align-items: center; gap: 9px; }
+.chips { display: flex; flex-wrap: wrap; gap: 5px; padding: 4px 8px 8px; }
+.chip { font: 600 12px var(--mono); height: 28px; min-width: 40px; padding: 0 9px; border-radius: 8px; border: 0; cursor: pointer; color: var(--text); background: var(--hover); }
+.chip:hover { background: var(--press); }
+.row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 7px 10px; font-size: 13px; }
+.row small { display: block; color: var(--faint); font-size: 11.5px; margin-top: 1px; }
+.field {
+  font: inherit; font-size: 13px; color: var(--text); background: var(--hover); border: 0; border-radius: 9px; height: 30px; padding: 0 8px;
+}
+.field option { background: var(--glass-solid); color: var(--text); }
+.switch { appearance: none; -webkit-appearance: none; width: 36px; height: 21px; border-radius: 999px; background: var(--press); position: relative; cursor: pointer; flex: none; transition: background .15s; margin: 0; }
+.switch::after { content: ""; position: absolute; top: 2px; left: 2px; width: 17px; height: 17px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.4); transition: transform .15s; }
+.switch:checked { background: var(--accent); }
+.switch:checked::after { transform: translateX(15px); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---- command palette & dialogs ---- */
+dialog { color: var(--text); border: 0; padding: 0; background: transparent; max-width: none; max-height: none; overflow: visible; }
+dialog::backdrop { background: rgba(3, 4, 8, .5); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+.sheet { width: min(580px, calc(100vw - 24px)); border-radius: 18px; overflow: hidden; background: var(--glass-solid); box-shadow: var(--shadow); }
+#palette { margin: 11vh auto 0; }
+.pal-in { display: flex; align-items: center; gap: 10px; padding: 0 16px; height: 54px; border-bottom: 1px solid var(--line); color: var(--dim); }
+.pal-in input { flex: 1; font: inherit; font-size: 16px; color: var(--text); background: transparent; border: 0; outline: 0; height: 100%; }
+.pal-list { max-height: min(52vh, 420px); overflow: auto; padding: 6px; }
+.pal-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 0 12px; height: 42px; border: 0; background: transparent; border-radius: 10px; font: inherit; color: var(--text); cursor: pointer; text-align: left; }
+.pal-item .i { color: var(--dim); }
+.pal-item[aria-selected=true] { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+.pal-item[aria-selected=true] .i { color: var(--accent); }
+.pal-item .k { margin-left: auto; display: flex; gap: 4px; }
+.pal-item .state { margin-left: auto; font-size: 12px; color: var(--faint); }
+.pal-empty { padding: 26px; text-align: center; color: var(--faint); }
+.pal-foot { display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--line); color: var(--faint); font-size: 12px; }
+.pal-foot span { display: flex; align-items: center; gap: 6px; }
+
+#auth { margin: 16vh auto 0; }
+#auth .sheet { width: min(400px, calc(100vw - 24px)); padding: 24px; }
+#auth h2 { margin: 0 0 4px; font-size: 17px; }
+#auth p { margin: 0 0 16px; color: var(--dim); }
+#auth input { width: 100%; height: 42px; font: 14px var(--mono); padding: 0 13px; color: var(--text); background: var(--hover); border: 1px solid var(--line); border-radius: 11px; outline: 0; }
+#auth input:focus { border-color: var(--accent); }
+#auth .err { min-height: 18px; margin: 7px 0 0; color: var(--bad); font-size: 12.5px; }
+#auth .go { margin-top: 10px; width: 100%; height: 40px; border-radius: 11px; background: var(--accent); color: var(--accent-ink); font-weight: 650; }
+#auth .go:hover { filter: brightness(1.08); background: var(--accent); }
 
 /* ---- small screens ---- */
-@media (max-width: 760px) {
-  header { gap: 8px; }
-  .lbl, footer .hint, .brand span { display: none; }
-  button { padding: 0 9px; }
-  main { padding: 10px; }
-  .sep { display: none; }
+@media (max-width: 880px) {
+  .dock { overflow-x: auto; scrollbar-width: none; }
+  .lbl, .brand span { display: none; }
+  .hud .res { display: none; }
 }
-@media (max-width: 480px) { #fmt, #total { display: none; } }
+@media (max-width: 640px) {
+  /* Compact dock: only what a phone needs; the rest lives in the command palette. */
+  .brand, .seg, .dock .sep, .status span,
+  [data-act=refresh], [data-act=screenshot], [data-act=record], [data-act=fullscreen] { display: none !important; }
+  .status { padding: 0 9px; }
+  .dock { gap: 6px; padding: 6px 8px; }
+  main { padding: 70px 8px 64px; }
+  .hud .m:nth-child(n+4), #spark, .kbdchip span { display: none; }
+  .dock { top: auto; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .dock.idle { transform: translateX(-50%) translateY(8px); }
+  .hud { bottom: 70px; left: 10px; }
+  .kbdchip { bottom: 70px; right: 10px; }
+  .toasts { bottom: 130px; }
+  [data-tip]::after { display: none; }
+}
 @media (prefers-reduced-motion: reduce) {
-  .dot, .spinner { animation: none !important; }
-  * { transition: none !important; }
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
 </style>
 </head>
 <body>
 
-<header>
-  <div class="brand">
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><path d="M7 11l2-2 2.5 3L14 8l3 3" stroke-width="1.5"/></svg>
-    <span>netfb</span>
-  </div>
-  <div class="status" id="status" data-state="connecting" role="status" aria-live="polite">
-    <i class="dot"></i><span id="statusText">Connecting</span>
-  </div>
-  <div class="spacer"></div>
-  <div class="controls">
-    <div class="seg" role="group" aria-label="Scaling">
-      <button id="sFit" type="button" aria-pressed="true" title="Fit to window (1)">Fit</button>
-      <button id="s1x" type="button" aria-pressed="false" title="One framebuffer pixel per device pixel (2)">1:1</button>
-      <button id="s2x" type="button" aria-pressed="false" title="Double size (3)">2×</button>
-    </div>
-    <button id="sharp" type="button" aria-pressed="true" title="Crisp pixels when enlarged (P)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M3 3h6v6H3zM15 3h6v6h-6zM3 15h6v6H3zM15 15h6v6h-6z"/></svg><span class="lbl">Crisp</span>
-    </button>
-    <select id="fps" aria-label="Maximum update rate" title="Maximum update rate"></select>
-    <span class="sep"></span>
-    <button id="pause" type="button" aria-label="Pause" title="Pause / resume (Space)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path id="pauseIcon" d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></svg><span class="lbl" id="pauseLbl">Pause</span>
-    </button>
-    <button id="refresh" type="button" aria-label="Full refresh" title="Request a full frame (R)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7"/></svg><span class="lbl">Refresh</span>
-    </button>
-    <button id="shot" type="button" aria-label="Save screenshot" title="Save screenshot (S)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg><span class="lbl">Screenshot</span>
-    </button>
-    <button id="kbd" type="button" aria-pressed="false" hidden title="Send keyboard input to the machine (Ctrl+Alt+K)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg><span class="lbl">Keyboard</span>
-    </button>
-    <button id="full" type="button" aria-label="Fullscreen" title="Fullscreen (F)">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span class="lbl">Fullscreen</span>
-    </button>
-  </div>
-</header>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="mg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7cf0d8"/><stop offset="1" stop-color="#8b7cff"/></linearGradient>
+    <symbol id="i-fit" viewBox="0 0 24 24"><path d="M4 9V5h4M20 9V5h-4M4 15v4h4M20 15v4h-4"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></symbol>
+    <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 6.3M20 4v7h-7"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z"/><circle cx="12" cy="13" r="3.4"/></symbol>
+    <symbol id="i-rec" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/></symbol>
+    <symbol id="i-keys" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="M8 9h.01M12 9h.01M16 9h.01M8 13h8M8 16.5h8"/></symbol>
+    <symbol id="i-kbd" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><path d="M6.5 10h.01M10 10h.01M13.5 10h.01M17 10h.01M7.5 14h9"/></symbol>
+    <symbol id="i-full" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4 4"/></symbol>
+    <symbol id="i-gear" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 14.5a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></symbol>
+    <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2.5"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 3v2M12 19v2M3 12h2M19 12h2M5.6 5.6 7 7M17 17l1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4"/></symbol>
+    <symbol id="i-type" viewBox="0 0 24 24"><path d="M5 7V5h14v2M12 5v14M9 19h6"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 3 5 13h6l-1 8 8-10h-6z"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 19V5M4 19h16M8 15l3-4 3 2 5-6"/></symbol>
+  </defs>
+</svg>
+
+<div class="ambient" aria-hidden="true"><canvas id="glow" width="64" height="40"></canvas></div>
 
 <main id="stage">
-  <canvas id="screen" width="640" height="400" aria-label="Remote framebuffer"></canvas>
-  <div class="overlay" id="overlay"><div class="card"><i class="spinner"></i><span id="overlayText">Connecting…</span></div></div>
+  <div id="frame" class="stale">
+    <canvas id="screen" width="640" height="400" aria-label="Remote framebuffer"></canvas>
+    <div class="nosignal show" id="nosignal"><div class="card"><i class="spinner" id="spin"></i><span id="nsText">Connecting…</span></div></div>
+  </div>
 </main>
 
-<footer>
-  <span id="fmt">—</span>
-  <span><b id="fpsNow">0</b> fps</span>
-  <span><b id="rate">0 B/s</b></span>
-  <span id="total">0 B received</span>
-  <span class="hint"><kbd>Space</kbd> pause &nbsp;<kbd>F</kbd> fullscreen &nbsp;<kbd>S</kbd> screenshot &nbsp;<kbd>Ctrl+Alt+K</kbd> keyboard</span>
-</footer>
+<nav class="dock glass" id="dock" aria-label="Controls">
+  <div class="brand">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><rect x="5" y="7" width="22" height="15" rx="3" fill="none" stroke="url(#mg)" stroke-width="2.4"/><path d="M12 26h8" stroke="url(#mg)" stroke-width="2.4" stroke-linecap="round"/><path d="M9 16l3-3 3 4 3-5 3 4" fill="none" stroke="url(#mg)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    <span>netfb</span>
+  </div>
+  <div class="status" id="status" data-state="connecting" role="status" aria-live="polite"><i class="dot"></i><span id="statusText">Connecting</span></div>
+  <span class="sep"></span>
+  <div class="seg" role="group" aria-label="Scaling">
+    <button class="btn" id="sFit" type="button" aria-pressed="true" data-act="scale-fit">Fit</button>
+    <button class="btn" id="s1x" type="button" aria-pressed="false" data-act="scale-1x">1:1</button>
+    <button class="btn" id="s2x" type="button" aria-pressed="false" data-act="scale-2x">2×</button>
+  </div>
+  <span class="sep"></span>
+  <div class="group">
+    <button class="btn" id="bPause" type="button" data-act="pause" aria-label="Pause"><svg class="i"><use id="pauseUse" href="#i-pause"/></svg></button>
+    <button class="btn" type="button" data-act="refresh" aria-label="Full refresh"><svg class="i"><use href="#i-refresh"/></svg></button>
+    <button class="btn" type="button" data-act="screenshot" aria-label="Save screenshot"><svg class="i"><use href="#i-camera"/></svg></button>
+    <button class="btn" id="bRec" type="button" data-act="record" aria-label="Record video"><svg class="i"><use href="#i-rec"/></svg><span id="recTime" hidden></span></button>
+    <button class="btn" id="bKeys" type="button" data-act="menu-keys" aria-label="Send keys" aria-haspopup="true"><svg class="i"><use href="#i-keys"/></svg></button>
+  </div>
+  <span class="sep"></span>
+  <button class="btn cta" id="bCapture" type="button" data-act="capture" aria-pressed="false" hidden><svg class="i"><use href="#i-kbd"/></svg><span class="lbl">Keyboard</span></button>
+  <div class="group">
+    <button class="btn" type="button" data-act="fullscreen" aria-label="Fullscreen"><svg class="i"><use href="#i-full"/></svg></button>
+    <button class="btn" type="button" data-act="palette" aria-label="Command palette"><svg class="i"><use href="#i-search"/></svg></button>
+    <button class="btn" id="bSettings" type="button" data-act="menu-settings" aria-label="Settings" aria-haspopup="true"><svg class="i"><use href="#i-gear"/></svg></button>
+  </div>
+</nav>
+
+<div class="hud glass" id="hud" aria-label="Statistics">
+  <div class="res"><b id="hRes">—</b><span id="hFmt">—</span></div>
+  <div class="m"><b id="hFps">0</b><small>fps</small></div>
+  <div class="m"><b id="hRate">0 B/s</b><small>wire</small></div>
+  <canvas id="spark" width="168" height="56" aria-hidden="true"></canvas>
+  <div class="m"><b id="hRtt">—</b><small>rtt</small></div>
+  <div class="m"><b id="hRatio">—</b><small>lz4</small></div>
+</div>
+
+<div class="kbdchip glass" id="kbdchip" hidden><svg class="i"><use href="#i-kbd"/></svg><span id="kbdText">Click the screen to type</span></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<input class="softkb" id="softkb" aria-label="On-screen keyboard input" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+
+<div class="menu glass" id="menuKeys" hidden role="menu">
+  <h4>Combinations</h4>
+  <button class="btn mi" role="menuitem" data-combo="ctrl+alt+delete"><span>Ctrl + Alt + Del</span></button>
+  <button class="btn mi" role="menuitem" data-combo="alt+tab"><span>Alt + Tab</span></button>
+  <button class="btn mi" role="menuitem" data-combo="ctrl+c"><span>Ctrl + C</span></button>
+  <button class="btn mi" role="menuitem" data-combo="ctrl+d"><span>Ctrl + D</span></button>
+  <button class="btn mi" role="menuitem" data-combo="super"><span>Super</span></button>
+  <button class="btn mi" role="menuitem" data-combo="escape"><span>Escape</span></button>
+  <h4>Virtual console (Ctrl + Alt + …)</h4>
+  <div class="chips">
+    <button class="chip" data-combo="ctrl+alt+f1">F1</button><button class="chip" data-combo="ctrl+alt+f2">F2</button>
+    <button class="chip" data-combo="ctrl+alt+f3">F3</button><button class="chip" data-combo="ctrl+alt+f4">F4</button>
+    <button class="chip" data-combo="ctrl+alt+f5">F5</button><button class="chip" data-combo="ctrl+alt+f6">F6</button>
+    <button class="chip" data-combo="ctrl+alt+f7">F7</button>
+  </div>
+  <h4>Clipboard</h4>
+  <button class="btn mi" role="menuitem" data-act="type-clipboard"><span><svg class="i"><use href="#i-type"/></svg>Type clipboard text</span></button>
+</div>
+
+<div class="menu glass" id="menuSettings" hidden role="menu">
+  <h4>Display</h4>
+  <div class="row"><div>Update rate<small>Maximum frames per second</small></div><select class="field" id="setFps" aria-label="Maximum update rate"></select></div>
+  <div class="row"><div>Crisp pixels<small>No smoothing when enlarged</small></div><input class="switch" type="checkbox" id="setSharp" role="switch" aria-label="Crisp pixels"></div>
+  <div class="row"><div>Ambient glow<small>Light spilling from the screen</small></div><input class="switch" type="checkbox" id="setGlow" role="switch" aria-label="Ambient glow"></div>
+  <div class="row"><div>Statistics<small>Rate, latency, compression</small></div><input class="switch" type="checkbox" id="setHud" role="switch" aria-label="Statistics"></div>
+  <h4>Keyboard</h4>
+  <div class="row"><div>Typing<small id="modeHelp">Characters: what you type is what appears</small></div>
+    <select class="field" id="setMode" aria-label="Typing mode"><option value="chars">Characters</option><option value="phys">Physical keys</option></select></div>
+  <div class="row"><div><span id="cmdName">⌘</span> key sends<small>Super, or Ctrl for familiar shortcuts</small></div>
+    <select class="field" id="setCmd" aria-label="Command key"><option value="0">Super</option><option value="1">Ctrl</option></select></div>
+</div>
+
+<dialog id="palette" aria-label="Command palette">
+  <div class="sheet">
+    <div class="pal-in"><svg class="i"><use href="#i-search"/></svg><input id="palIn" type="text" placeholder="Type a command…" autocomplete="off" spellcheck="false" aria-label="Search commands"></div>
+    <div class="pal-list" id="palList" role="listbox"></div>
+    <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> navigate</span><span><kbd>↵</kbd> run</span><span><kbd>esc</kbd> close</span></div>
+  </div>
+</dialog>
 
 <dialog id="auth">
-  <form method="dialog" id="authForm">
+  <form method="dialog" id="authForm" class="sheet">
     <h2>Access token required</h2>
     <p>This framebuffer is protected. Enter the token that was passed to the kernel module.</p>
     <input id="tokenInput" type="password" autocomplete="off" spellcheck="false" aria-label="Access token" required>
     <p class="err" id="authErr" role="alert"></p>
-    <div class="row"><button class="primary" type="submit">Connect</button></div>
+    <button class="btn go" type="submit">Connect</button>
   </form>
 </dialog>
 
@@ -239,28 +424,53 @@ dialog button.primary:hover { filter: brightness(1.08); background: var(--accent
 (() => {
 const $ = (id) => document.getElementById(id);
 const canvas = $("screen"), ctx = canvas.getContext("2d", { alpha: false });
-const stage = $("stage");
+const stage = $("stage"), frame = $("frame");
+const glowCv = $("glow"), glowCtx = glowCv.getContext("2d", { alpha: false });
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const IS_MAC = /mac|iphone|ipad|ipod/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
 
-// Persisted view preferences; storage can be unavailable (private mode).
+// Storage can be unavailable (private mode): every access is guarded.
 const store = {
   get(k, d) { try { const v = localStorage.getItem("netfb." + k); return v === null ? d : v; } catch { return d; } },
   set(k, v) { try { localStorage.setItem("netfb." + k, v); } catch { /* ignore */ } },
 };
 
 const S = {
-  token: null, info: null, ws: null, paused: false, closing: false,
+  token: null, info: null, ws: null,
+  paused: false, capture: false, recording: null,
   scale: store.get("scale", "fit"), sharp: store.get("sharp", "1") === "1",
+  glow: store.get("glow", "1") === "1", hud: store.get("hud", "1") === "1",
   fps: parseInt(store.get("fps", "30"), 10) || 30,
-  retry: 0, timer: 0, tick: 0, capture: false, held: new Set(),
-  img: null, dst: null, decode: null,
+  mode: store.get("mode", "chars"), cmdctrl: store.get("cmdctrl", "0") === "1",
+  retry: 0, timer: 0,
+  img: null, dst: null, decode: null, scratch: null,
   dirtyMin: Infinity, dirtyMax: -1, raf: 0,
-  frames: 0, bytes: 0, total: 0, rawBytes: 0, rawTotal: 0, scratch: null,
+  frames: 0, bytes: 0, raw: 0, total: 0, rawTotal: 0, rtt: null, hist: new Array(60).fill(0),
 };
 
-// ---- token ---------------------------------------------------------------
+// ---- platform-aware shortcut labels ----------------------------------------
+const GLYPH = { mod: IS_MAC ? "⌘" : "Ctrl", ctrl: IS_MAC ? "⌃" : "Ctrl", alt: IS_MAC ? "⌥" : "Alt", shift: IS_MAC ? "⇧" : "Shift" };
+function labelParts(spec) {
+  return spec.split("+").map((p) => GLYPH[p] || ({ space: "Space", enter: "↵", esc: "Esc" }[p] || p.toUpperCase()));
+}
+function chips(spec) {
+  const f = document.createDocumentFragment();
+  for (const p of labelParts(spec)) { const k = document.createElement("kbd"); k.textContent = p; f.append(k); }
+  return f;
+}
+const labelText = (spec) => labelParts(spec).join(IS_MAC ? "" : "+");
+
+// ---- toasts ------------------------------------------------------------------
+function toast(msg) {
+  const t = document.createElement("div");
+  t.className = "toast glass"; t.textContent = msg;
+  $("toasts").append(t);
+  setTimeout(() => { t.classList.add("out"); setTimeout(() => t.remove(), 320); }, 2200);
+}
+
+// ---- token -------------------------------------------------------------------
 function initToken() {
-  const q = new URLSearchParams(location.search);
-  const t = q.get("token");
+  const q = new URLSearchParams(location.search), t = q.get("token");
   if (t) {
     try { sessionStorage.setItem("netfb.token", t); } catch { /* ignore */ }
     q.delete("token");
@@ -271,30 +481,25 @@ function initToken() {
   try { return sessionStorage.getItem("netfb.token"); } catch { return null; }
 }
 
-// ---- status --------------------------------------------------------------
-function setStatus(state, text, overlay) {
+// ---- status ------------------------------------------------------------------
+function setStatus(state, text, noSignal) {
   $("status").dataset.state = state;
   $("statusText").textContent = text;
-  const show = overlay !== undefined;
-  $("overlay").classList.toggle("show", show);
-  if (show) $("overlayText").textContent = overlay;
-  canvas.classList.toggle("stale", state === "offline");
-  $("overlay").querySelector(".spinner").style.display = state === "offline" || state === "connecting" ? "" : "none";
+  const show = noSignal !== undefined;
+  $("nosignal").classList.toggle("show", show);
+  frame.classList.toggle("stale", show);
+  if (show) $("nsText").textContent = noSignal;
+  $("spin").style.display = state === "connecting" || state === "offline" ? "" : "none";
 }
 
-function fmtBytes(n) {
-  if (n < 1024) return n.toFixed(0) + " B";
-  if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
-  if (n < 1073741824) return (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB";
-  return (n / 1073741824).toFixed(2) + " GB";
-}
+const fmtBytes = (n) => n < 1024 ? n.toFixed(0) + " B" : n < 1048576 ? (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB"
+  : n < 1073741824 ? (n / 1048576).toFixed(n < 10485760 ? 1 : 0) + " MB" : (n / 1073741824).toFixed(2) + " GB";
 
-// ---- framebuffer format --------------------------------------------------
-function expand(v, len) { return len >= 8 ? v >> (len - 8) : (v << (8 - len)) | (v >> (2 * len - 8)); }
+// ---- pixel formats -----------------------------------------------------------
+const expand = (v, len) => len >= 8 ? v >> (len - 8) : (v << (8 - len)) | (v >> (2 * len - 8));
 
 function makeDecoder(info) {
-  const W = info.width, [ro, rl] = info.red, [go, gl] = info.green, [bo, bl] = info.blue;
-  const dst = S.dst;
+  const W = info.width, [ro, rl] = info.red, [go, gl] = info.green, [bo, bl] = info.blue, dst = S.dst;
   if (info.bpp === 32) {
     const rm = (1 << rl) - 1, gm = (1 << gl) - 1, bm = (1 << bl) - 1;
     const rs = 8 - Math.min(rl, 8), gs = 8 - Math.min(gl, 8), bs = 8 - Math.min(bl, 8);
@@ -306,7 +511,6 @@ function makeDecoder(info) {
       }
     };
   }
-  // 16 bpp: per-channel lookup tables to 8 bit
   const lr = new Uint8Array(1 << rl), lg = new Uint8Array(1 << gl), lb = new Uint8Array(1 << bl);
   for (let i = 0; i < lr.length; i++) lr[i] = expand(i, rl);
   for (let i = 0; i < lg.length; i++) lg[i] = expand(i, gl);
@@ -330,27 +534,19 @@ function applyInfo(info) {
     S.dst = new Uint32Array(S.img.data.buffer);
     S.dst.fill(0xff000000);
     ctx.putImageData(S.img, 0, 0);
+    glowCv.height = Math.max(8, Math.round(glowCv.width * info.height / info.width));
   }
   S.decode = makeDecoder(info);
-  $("fmt").innerHTML = `<b>${info.width}×${info.height}</b> ${info.bpp === 16 ? "RGB565" : "XRGB8888"}`;
-  buildFpsOptions(info.max_fps);
-  $("kbd").hidden = !info.keyboard;
+  $("hRes").textContent = `${info.width}×${info.height}`;
+  $("hFmt").textContent = info.bpp === 16 ? "RGB565" : "XRGB8888";
+  $("bCapture").hidden = !info.keyboard;
+  $("kbdchip").hidden = !info.keyboard;
   if (!info.keyboard) setCapture(false);
+  buildFpsOptions(info.max_fps);
   layout();
 }
 
-// ---- rendering -----------------------------------------------------------
-function flush() {
-  S.raf = 0;
-  if (S.dirtyMax < S.dirtyMin) return;
-  const y = S.dirtyMin, h = S.dirtyMax - y + 1;
-  ctx.putImageData(S.img, 0, 0, 0, y, S.info.width, h);
-  S.dirtyMin = Infinity; S.dirtyMax = -1;
-  S.frames++;
-}
-
-// LZ4 block decoder (https://github.com/lz4/lz4/blob/dev/doc/lz4_Block_format.md).
-// Writes dst[0..n) and returns the decoded length, or -1 on malformed input.
+// LZ4 block decoder (lz4_Block_format.md). Returns the decoded length or -1 if malformed.
 function lz4Block(src, si, se, dst) {
   const dn = dst.length;
   let di = 0;
@@ -360,7 +556,7 @@ function lz4Block(src, si, se, dst) {
     if (len === 15) { let b; do { if (si >= se) return -1; b = src[si++]; len += b; } while (b === 255); }
     if (si + len > se || di + len > dn) return -1;
     dst.set(src.subarray(si, si + len), di); si += len; di += len;
-    if (si >= se) break;                       // the last sequence has literals only
+    if (si >= se) break;
     if (si + 2 > se) return -1;
     const off = src[si] | (src[si + 1] << 8); si += 2;
     let m = tok & 15;
@@ -368,9 +564,19 @@ function lz4Block(src, si, se, dst) {
     m += 4;
     if (!off || off > di || di + m > dn) return -1;
     if (off >= m) { dst.copyWithin(di, di - off, di - off + m); di += m; }
-    else for (let i = 0; i < m; i++, di++) dst[di] = dst[di - off];   // overlapping run
+    else for (let i = 0; i < m; i++, di++) dst[di] = dst[di - off];
   }
   return di;
+}
+
+// ---- rendering ---------------------------------------------------------------
+function flush() {
+  S.raf = 0;
+  if (S.dirtyMax < S.dirtyMin) return;
+  const y = S.dirtyMin, h = S.dirtyMax - y + 1;
+  ctx.putImageData(S.img, 0, 0, 0, y, S.info.width, h);
+  S.dirtyMin = Infinity; S.dirtyMax = -1;
+  S.frames++;
 }
 
 function onPixels(buf) {
@@ -378,22 +584,18 @@ function onPixels(buf) {
   if (!info || buf.byteLength < 8) return;
   const dv = new DataView(buf);
   if (dv.getUint8(0) !== 1) return;
-  const flags = dv.getUint8(1), y = dv.getUint16(2, true), h = dv.getUint16(4, true);
-  const raw = h * info.stride;
+  const flags = dv.getUint8(1), y = dv.getUint16(2, true), h = dv.getUint16(4, true), raw = h * info.stride;
   if (!h || y + h > info.height) return;
   if (flags & 1) {
-    // Decompress into a scratch buffer laid out like an uncompressed message,
-    // so the pixel decoders (which read at byte offset 8) are shared.
+    // Decompress into a scratch buffer shaped like a raw message so the decoders are shared.
     if (!S.scratch || S.scratch.byteLength < 8 + raw) S.scratch = new ArrayBuffer(8 + Math.max(raw, 65536));
-    const out = new Uint8Array(S.scratch, 8, raw);
-    if (lz4Block(new Uint8Array(buf), 8, buf.byteLength, out) !== raw) return;
-    S.rawBytes += raw;
+    if (lz4Block(new Uint8Array(buf), 8, buf.byteLength, new Uint8Array(S.scratch, 8, raw)) !== raw) return;
     S.decode(S.scratch, y, h);
   } else {
     if (buf.byteLength !== 8 + raw) return;
-    S.rawBytes += raw;
     S.decode(buf, y, h);
   }
+  S.raw += raw;
   if (y < S.dirtyMin) S.dirtyMin = y;
   if (y + h - 1 > S.dirtyMax) S.dirtyMax = y + h - 1;
   if (!S.raf) S.raf = requestAnimationFrame(flush);
@@ -404,64 +606,17 @@ function layout() {
   const W = S.info.width, H = S.info.height, dpr = window.devicePixelRatio || 1;
   let k;
   if (S.scale === "fit") {
-    const cs = getComputedStyle(stage), full = document.fullscreenElement === stage;
-    const aw = stage.clientWidth - (full ? 0 : parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight));
-    const ah = stage.clientHeight - (full ? 0 : parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom));
+    const cs = getComputedStyle(stage);
+    const aw = stage.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const ah = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
     k = Math.max(0.05, Math.min(aw / W, ah / H));
-  } else {
-    k = (S.scale === "2x" ? 2 : 1) / dpr;
-  }
+  } else k = (S.scale === "2x" ? 2 : 1) / dpr;
   canvas.style.width = Math.floor(W * k) + "px";
   canvas.style.height = Math.floor(H * k) + "px";
   canvas.style.imageRendering = S.sharp && k * dpr >= 1 ? "pixelated" : "auto";
 }
 
-// ---- keyboard ------------------------------------------------------------
-// KeyboardEvent.code -> Linux input-event-codes.h (physical keys, layout-independent;
-// the guest applies its own keymap).
-const KEYS = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27,
-  Enter: 28, ControlLeft: 29, Semicolon: 39, Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43,
-  Comma: 51, Period: 52, Slash: 53, ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57, CapsLock: 58,
-  NumLock: 69, ScrollLock: 70, NumpadSubtract: 74, NumpadAdd: 78, NumpadDecimal: 83, IntlBackslash: 86,
-  NumpadEnter: 96, ControlRight: 97, NumpadDivide: 98, PrintScreen: 99, AltRight: 100, Home: 102,
-  ArrowUp: 103, PageUp: 104, ArrowLeft: 105, ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109,
-  Insert: 110, Delete: 111, Pause: 119, MetaLeft: 125, MetaRight: 126, ContextMenu: 127 };
-"1234567890".split("").forEach((c, i) => { KEYS["Digit" + c] = 2 + i; });
-"QWERTYUIOP".split("").forEach((c, i) => { KEYS["Key" + c] = 16 + i; });
-"ASDFGHJKL".split("").forEach((c, i) => { KEYS["Key" + c] = 30 + i; });
-"ZXCVBNM".split("").forEach((c, i) => { KEYS["Key" + c] = 44 + i; });
-for (let i = 1; i <= 10; i++) KEYS["F" + i] = 58 + i;
-KEYS.F11 = 87; KEYS.F12 = 88;
-[82, 79, 80, 81, 75, 76, 77, 71, 72, 73].forEach((c, i) => { KEYS["Numpad" + i] = c; });
-
-function keyEvent(e, down) {
-  if (!S.capture) return;
-  if (down && e.ctrlKey && e.altKey && e.code === "KeyK") { e.preventDefault(); setCapture(false); return; }
-  const code = KEYS[e.code];
-  if (!code) return;
-  e.preventDefault(); e.stopPropagation();
-  if (down && e.repeat) return;          // the guest's input core generates auto-repeat
-  if (down) S.held.add(code); else S.held.delete(code);
-  send(`key ${code} ${down ? 1 : 0}`);
-}
-
-function releaseKeys() { for (const c of S.held) send(`key ${c} 0`); S.held.clear(); }
-
-function setCapture(on) {
-  if (on && !(S.info && S.info.keyboard)) return;
-  if (!on) releaseKeys();
-  S.capture = on;
-  $("kbd").setAttribute("aria-pressed", String(on));
-  canvas.classList.toggle("capture", on);
-}
-
-$("kbd").onclick = () => setCapture(!S.capture);
-canvas.addEventListener("click", () => { if (!S.capture) setCapture(true); });
-window.addEventListener("keydown", (e) => keyEvent(e, true), true);
-window.addEventListener("keyup", (e) => keyEvent(e, false), true);
-window.addEventListener("blur", releaseKeys);
-
-// ---- connection ----------------------------------------------------------
+// ---- connection --------------------------------------------------------------
 function send(cmd) { if (S.ws && S.ws.readyState === WebSocket.OPEN) S.ws.send(cmd); }
 
 function scheduleReconnect(why) {
@@ -490,9 +645,8 @@ async function connect() {
 }
 
 function openSocket() {
-  const url = (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws" +
-              (S.token ? "?token=" + encodeURIComponent(S.token) : "");
-  const ws = new WebSocket(url);
+  const ws = new WebSocket((location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws" +
+                           (S.token ? "?token=" + encodeURIComponent(S.token) : ""));
   ws.binaryType = "arraybuffer";
   S.ws = ws;
   ws.onopen = () => {
@@ -500,16 +654,25 @@ function openSocket() {
     send("fps " + S.fps);
     if (S.paused) send("pause");
     setPausedUi();
+    send("ping " + (performance.now() | 0));
   };
   ws.onmessage = (ev) => {
     if (typeof ev.data === "string") {
-      try { const m = JSON.parse(ev.data); if (m.type === "info") applyInfo(m); } catch { /* ignore */ }
+      try {
+        const m = JSON.parse(ev.data);
+        if (m.type === "info") applyInfo(m);
+        else if (m.type === "pong") S.rtt = Math.max(0, (performance.now() | 0) - m.t);
+      } catch { /* ignore */ }
       return;
     }
     S.bytes += ev.data.byteLength; S.total += ev.data.byteLength;
     onPixels(ev.data);
   };
-  ws.onclose = () => { if (S.ws === ws) { S.ws = null; S.held.clear(); scheduleReconnect(); } };
+  ws.onclose = () => {
+    if (S.ws !== ws) return;
+    S.ws = null; S.rtt = null; keys.forget();
+    scheduleReconnect();
+  };
   ws.onerror = () => ws.close();
 }
 
@@ -521,88 +684,470 @@ function askToken(err) {
   $("tokenInput").value = "";
   $("tokenInput").focus();
 }
-
 $("authForm").addEventListener("submit", () => {
   S.token = $("tokenInput").value.trim();
   try { sessionStorage.setItem("netfb.token", S.token); } catch { /* ignore */ }
   connect();
 });
 
-// ---- controls ------------------------------------------------------------
-function setPausedUi() {
-  const p = S.paused;
-  $("pauseLbl").textContent = p ? "Resume" : "Pause";
-  $("pause").setAttribute("aria-label", p ? "Resume" : "Pause");
-  $("pauseIcon").setAttribute("d", p ? "M7 4.5v15l12-7.5z" : "M7 5h3.5v14H7zM13.5 5H17v14h-3.5z");
-  if (S.ws && S.ws.readyState === WebSocket.OPEN) setStatus(p ? "paused" : "live", p ? "Paused" : "Live");
+// ======================== keyboard =============================================
+// Linux input-event-codes for physical keys (KeyboardEvent.code).
+const KEYS = { Escape: 1, Minus: 12, Equal: 13, Backspace: 14, Tab: 15, BracketLeft: 26, BracketRight: 27, Enter: 28,
+  Semicolon: 39, Quote: 40, Backquote: 41, Backslash: 43, Comma: 51, Period: 52, Slash: 53, NumpadMultiply: 55,
+  Space: 57, NumLock: 69, ScrollLock: 70, NumpadSubtract: 74, NumpadAdd: 78, NumpadDecimal: 83, IntlBackslash: 86,
+  NumpadEnter: 96, NumpadDivide: 98, PrintScreen: 99, Home: 102, ArrowUp: 103, PageUp: 104, ArrowLeft: 105,
+  ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109, Insert: 110, Delete: 111, Pause: 119, ContextMenu: 127,
+  F11: 87, F12: 88 };
+"1234567890".split("").forEach((c, i) => { KEYS["Digit" + c] = 2 + i; });
+"QWERTYUIOP".split("").forEach((c, i) => { KEYS["Key" + c] = 16 + i; });
+"ASDFGHJKL".split("").forEach((c, i) => { KEYS["Key" + c] = 30 + i; });
+"ZXCVBNM".split("").forEach((c, i) => { KEYS["Key" + c] = 44 + i; });
+for (let i = 1; i <= 10; i++) KEYS["F" + i] = 58 + i;
+[82, 79, 80, 81, 75, 76, 77, 71, 72, 73].forEach((c, i) => { KEYS["Numpad" + i] = c; });
+
+// Modifier keys, as Linux codes, grouped by kind.
+const MODK = { shift: [42, 54], ctrl: [29, 97], alt: [56, 100], meta: [125, 126] };
+const MODCODE = { ShiftLeft: 42, ShiftRight: 54, ControlLeft: 29, ControlRight: 97, AltLeft: 56, AltRight: 100, MetaLeft: 125, MetaRight: 126 };
+const kindOf = (c) => Object.keys(MODK).find((k) => MODK[k].includes(c));
+
+// US layout: character -> [linux code, needs shift]. The guest keymap is US, so
+// "Characters" mode types the character you see on your own keycaps.
+const US = new Map(), US_BY_CODE = new Map();
+[["`1234567890-=", [41, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13], "~!@#$%^&*()_+"],
+ ["qwertyuiop[]\\", [16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 43], "QWERTYUIOP{}|"],
+ ["asdfghjkl;'", [30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40], 'ASDFGHJKL:"'],
+ ["zxcvbnm,./", [44, 45, 46, 47, 48, 49, 50, 51, 52, 53], "ZXCVBNM<>?"]].forEach(([base, codes, shifted]) => {
+  [...base].forEach((c, i) => {
+    US.set(c, [codes[i], false]); US.set(shifted[i], [codes[i], true]);
+    US_BY_CODE.set(codes[i], [c, shifted[i]]);
+  });
+});
+US.set(" ", [57, false]);
+// What a US keyboard would type for this physical key: used to tell "the key
+// produced a different character because of Option/AltGr" from a plain keypress.
+const usChar = (code, shift) => { const p = US_BY_CODE.get(KEYS[code]); return p ? p[shift ? 1 : 0] : null; };
+
+const keys = (() => {
+  const guest = new Set();         // modifier codes currently held in the guest
+  const phys = new Set();          // modifier codes physically held by the user (Cmd possibly remapped)
+  const active = new Map();        // KeyboardEvent.code -> linux code, for non-modifier keys held down
+
+  function emit(code, down) {
+    send(`key ${code} ${down ? 1 : 0}`);
+    if (kindOf(code)) { if (down) guest.add(code); else guest.delete(code); }
+  }
+  function setKind(kind, want) {
+    const has = MODK[kind].some((c) => guest.has(c));
+    if (want && !has) emit(MODK[kind].find((c) => phys.has(c)) || MODK[kind][0], true);
+    else if (!want && has) for (const c of MODK[kind]) if (guest.has(c)) emit(c, false);
+  }
+  const physWant = (kind) => MODK[kind].some((c) => phys.has(c));
+  const syncMods = () => { for (const k of Object.keys(MODK)) setKind(k, physWant(k)); };
+
+  function releaseActive() { for (const code of active.values()) emit(code, false); active.clear(); syncMods(); }
+  function releaseAll() { releaseActive(); for (const c of [...guest]) emit(c, false); phys.clear(); }
+  // The socket is gone: the server releases what we held, so only drop local state.
+  function forget() { guest.clear(); phys.clear(); active.clear(); }
+
+  async function pulse(code) { emit(code, true); await sleep(20); emit(code, false); }
+
+  function isPasteCombo(e, k) {
+    return k === "v" && (IS_MAC ? e.metaKey && !e.ctrlKey : e.ctrlKey && e.shiftKey);
+  }
+
+  // Returns true when the event was consumed (the page then calls preventDefault).
+  function handle(e, down) {
+    const k = (e.key || "").toLowerCase();
+    if (down && e.ctrlKey && e.altKey && e.code === "KeyK") { setCapture(false); return true; }
+    if (isPasteCombo(e, k)) return false;            // let the paste event deliver the text
+    if (e.isComposing || e.key === "Process") return true;
+
+    const mc = MODCODE[e.code];
+    if (mc) {
+      const meta = e.code.startsWith("Meta");
+      const code = meta && S.cmdctrl ? (e.code === "MetaLeft" ? 29 : 97) : mc;
+      if (down) { if (!e.repeat) { phys.add(code); emit(code, true); } }
+      else {
+        // macOS sends no keyup for keys pressed while Cmd is held: release them first.
+        if (meta) releaseActive();
+        phys.delete(code); emit(code, false);
+        if (!meta) syncMods();
+      }
+      return true;
+    }
+
+    if (e.code === "CapsLock") {
+      // In Characters mode case is carried by the characters themselves.
+      if (S.mode === "phys") { if (IS_MAC) pulse(58); else emit(58, down); }
+      return true;
+    }
+
+    if (!down) {
+      const code = active.get(e.code);
+      if (code !== undefined) { active.delete(e.code); emit(code, false); }
+      syncMods();
+      return true;
+    }
+    if (e.repeat) return true;                       // the guest generates its own auto-repeat
+
+    const want = { shift: e.shiftKey, ctrl: e.ctrlKey || (S.cmdctrl && e.metaKey), alt: e.altKey, meta: e.metaKey && !S.cmdctrl };
+    let code;
+    const ch = e.key;
+    if (S.mode === "chars" && ch.length === 1 && US.has(ch)) {
+      const [c, shift] = US.get(ch);
+      code = c;
+      const altGr = !!(e.getModifierState && e.getModifierState("AltGraph"));
+      want.shift = shift;
+      if (altGr) { want.alt = false; want.ctrl = false; }                       // Windows reports AltGr as Ctrl+Alt
+      else if (e.altKey && ch !== usChar(e.code, e.shiftKey)) want.alt = false; // Option composed this character
+    } else {
+      code = KEYS[e.code];
+      if (code === undefined) return false;          // a key we do not know: leave it to the browser
+    }
+    for (const kind of Object.keys(want)) setKind(kind, want[kind]);
+    emit(code, true);
+    active.set(e.code, code);
+    if (IS_MAC && e.metaKey) {
+      setTimeout(() => { if (active.get(e.code) === code) { active.delete(e.code); emit(code, false); syncMods(); } }, 40);
+    }
+    return true;
+  }
+
+  async function type(text) {
+    if (!S.ws) return;
+    const chars = [...text.replace(/\r\n?/g, "\n")].slice(0, 20000);
+    let skipped = 0;
+    for (const ch of chars) {
+      let code, shift = false;
+      if (ch === "\n") code = 28; else if (ch === "\t") code = 15;
+      else if (US.has(ch)) [code, shift] = US.get(ch);
+      else { skipped++; continue; }
+      for (const k of ["ctrl", "alt", "meta"]) setKind(k, false);
+      setKind("shift", shift);
+      emit(code, true); emit(code, false);
+      await sleep(9);
+    }
+    syncMods();
+    toast(skipped ? `Typed ${chars.length - skipped} characters (${skipped} not typeable)` : `Typed ${chars.length} characters`);
+  }
+
+  async function combo(spec) {
+    const names = { ctrl: 29, alt: 56, shift: 42, super: 125, delete: 111, tab: 15, escape: 1, c: 46, d: 32 };
+    for (let i = 1; i <= 7; i++) names["f" + i] = 58 + i;
+    const codes = spec.split("+").map((n) => names[n]);
+    if (codes.some((c) => c === undefined)) return;
+    releaseActive();
+    for (const c of codes) { emit(c, true); await sleep(15); }
+    await sleep(40);
+    for (const c of [...codes].reverse()) { emit(c, false); await sleep(15); }
+    syncMods();
+  }
+
+  function tapCode(code) { emit(code, true); emit(code, false); }
+
+  return { handle, releaseAll, releaseActive, forget, type, combo, tapCode };
+})();
+
+async function keyboardLock(on) {
+  try {
+    if (!navigator.keyboard) return;
+    if (on && document.fullscreenElement) await navigator.keyboard.lock();   // lets a page see Esc / ⌘ combos
+    else navigator.keyboard.unlock();
+  } catch { /* unsupported or refused */ }
 }
 
-function togglePause() { S.paused = !S.paused; send(S.paused ? "pause" : "resume"); setPausedUi(); }
+function setCapture(on) {
+  if (on && !(S.info && S.info.keyboard)) return;
+  if (!on) keys.releaseAll();
+  S.capture = on;
+  $("bCapture").setAttribute("aria-pressed", String(on));
+  frame.classList.toggle("capture", on);
+  $("kbdchip").classList.toggle("on", on);
+  $("kbdText").textContent = on ? `Typing into the machine — ${labelText("ctrl+alt+k")} to release` : "Click the screen to type";
+  keyboardLock(on);
+  // Touch devices only show their keyboard for a focused text field.
+  if (matchMedia("(pointer: coarse)").matches) { if (on) $("softkb").focus({ preventScroll: true }); else $("softkb").blur(); }
+  wake();
+}
+
+// On-screen keyboard: printable text arrives as input events (physical keys such as Enter
+// and Backspace still come through keydown and the normal path).
+$("softkb").addEventListener("beforeinput", (e) => {
+  if (!S.capture) return;
+  e.preventDefault();
+  if (e.data && (e.inputType === "insertText" || e.inputType === "insertCompositionText")) keys.type(e.data);
+  else if (e.inputType === "deleteContentBackward") keys.tapCode(14);
+  else if (e.inputType === "insertLineBreak" || e.inputType === "insertParagraph") keys.tapCode(28);
+});
+$("softkb").addEventListener("blur", () => { if (S.capture && matchMedia("(pointer: coarse)").matches) setTimeout(() => S.capture && $("softkb").focus({ preventScroll: true }), 0); });
+
+// ======================== actions ==============================================
+const clipboardImage = async () => {
+  const blob = await new Promise((r) => canvas.toBlob(r, "image/png"));
+  await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+  toast("Screenshot copied");
+};
+const stamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`; };
+function download(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+function screenshot() {
+  canvas.toBlob((b) => { if (b) { download(b, `netfb-${stamp()}.png`); toast("Screenshot saved"); } }, "image/png");
+}
+function toggleRecord() {
+  if (S.recording) { S.recording.mr.stop(); return; }
+  if (!window.MediaRecorder) { toast("Recording is not supported in this browser"); return; }
+  const mime = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm", "video/mp4"].find((t) => MediaRecorder.isTypeSupported(t));
+  const mr = new MediaRecorder(canvas.captureStream(30), mime ? { mimeType: mime, videoBitsPerSecond: 5e6 } : {});
+  const chunks = [];
+  mr.ondataavailable = (e) => { if (e.data.size) chunks.push(e.data); };
+  mr.onstop = () => {
+    clearInterval(S.recording.t); S.recording = null; recUi();
+    download(new Blob(chunks, { type: mr.mimeType }), `netfb-${stamp()}.${mr.mimeType.includes("mp4") ? "mp4" : "webm"}`);
+    toast("Recording saved");
+  };
+  mr.start(1000);
+  S.recording = { mr, t0: Date.now(), t: setInterval(recUi, 500) };
+  recUi(); toast("Recording started");
+}
+function recUi() {
+  const r = S.recording, b = $("bRec"), t = $("recTime");
+  b.classList.toggle("rec", !!r); t.hidden = !r;
+  if (r) { const s = Math.floor((Date.now() - r.t0) / 1000); t.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`; }
+}
+
+function setPausedUi() {
+  const p = S.paused;
+  $("pauseUse").setAttribute("href", p ? "#i-play" : "#i-pause");
+  $("bPause").setAttribute("aria-label", p ? "Resume" : "Pause");
+  $("bPause").classList.toggle("on", p);
+  if (S.ws && S.ws.readyState === WebSocket.OPEN) setStatus(p ? "paused" : "live", p ? "Paused" : "Live");
+}
+const togglePause = () => { S.paused = !S.paused; send(S.paused ? "pause" : "resume"); setPausedUi(); };
 
 function setScale(s) {
   S.scale = s; store.set("scale", s);
   for (const [id, v] of [["sFit", "fit"], ["s1x", "1x"], ["s2x", "2x"]]) $(id).setAttribute("aria-pressed", String(v === s));
   layout();
 }
+function setSharp(v) { S.sharp = v; store.set("sharp", v ? "1" : "0"); $("setSharp").checked = v; layout(); }
+function setGlow(v) { S.glow = v; store.set("glow", v ? "1" : "0"); $("setGlow").checked = v; document.body.classList.toggle("noglow", !v); }
+function setHud(v) { S.hud = v; store.set("hud", v ? "1" : "0"); $("setHud").checked = v; $("hud").hidden = !v; }
 
-function setSharp(v) { S.sharp = v; store.set("sharp", v ? "1" : "0"); $("sharp").setAttribute("aria-pressed", String(v)); layout(); }
+function fullscreen() {
+  if (document.fullscreenElement || document.webkitFullscreenElement) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+  else (stage.requestFullscreen || stage.webkitRequestFullscreen || (() => toast("Fullscreen is not available here"))).call(stage);
+}
 
+// Everything the palette, the dock and the shortcuts can do lives in one table.
+const ACTIONS = [
+  { id: "capture", label: "Keyboard capture", icon: "kbd", keys: ["k"], state: () => S.capture ? "on" : "off", run: () => setCapture(!S.capture), need: () => S.info && S.info.keyboard },
+  { id: "pause", label: "Pause / resume", icon: "pause", keys: ["space"], run: togglePause },
+  { id: "refresh", label: "Request a full frame", icon: "refresh", keys: ["r"], run: () => send("full") },
+  { id: "screenshot", label: "Save screenshot", icon: "camera", keys: ["s"], run: screenshot },
+  { id: "copyshot", label: "Copy screenshot to clipboard", icon: "copy", keys: [], run: () => clipboardImage().catch(() => toast("Clipboard access was refused")) },
+  { id: "record", label: "Record video", icon: "rec", keys: ["shift+r"], state: () => S.recording ? "recording" : "", run: toggleRecord },
+  { id: "fullscreen", label: "Fullscreen", icon: "full", keys: ["f"], run: fullscreen },
+  { id: "scale-fit", label: "Scale: fit to window", icon: "fit", keys: ["1"], run: () => setScale("fit") },
+  { id: "scale-1x", label: "Scale: 1:1 device pixels", icon: "fit", keys: ["2"], run: () => setScale("1x") },
+  { id: "scale-2x", label: "Scale: 2×", icon: "fit", keys: ["3"], run: () => setScale("2x") },
+  { id: "crisp", label: "Crisp pixels", icon: "grid", keys: ["p"], state: () => S.sharp ? "on" : "off", run: () => setSharp(!S.sharp) },
+  { id: "glow", label: "Ambient glow", icon: "sun", keys: ["g"], state: () => S.glow ? "on" : "off", run: () => setGlow(!S.glow) },
+  { id: "hud", label: "Statistics", icon: "chart", keys: ["i"], state: () => S.hud ? "on" : "off", run: () => setHud(!S.hud) },
+  { id: "type-clipboard", label: "Type clipboard text into the machine", icon: "type", keys: [], run: async () => {
+      try { keys.type(await navigator.clipboard.readText()); } catch { toast("Clipboard access was refused"); } }, need: () => S.info && S.info.keyboard },
+  { id: "cad", label: "Send Ctrl + Alt + Del", icon: "bolt", keys: [], run: () => keys.combo("ctrl+alt+delete"), need: () => S.info && S.info.keyboard },
+  { id: "palette", label: "Command palette", icon: "search", keys: ["mod+k", "/"], run: () => openPalette() },
+];
+const byId = Object.fromEntries(ACTIONS.map((a) => [a.id, a]));
+
+// Shortcuts match the character on the key, not its position, so they work on any
+// layout; Option-composed characters on a Mac fall back to the physical key.
+function keyName(e) {
+  const k = e.key || "";
+  if (k === " ") return "space";
+  if (k.length === 1 && /[a-z0-9/]/i.test(k)) return k.toLowerCase();
+  const m = /^(?:Key|Digit)(.)$/.exec(e.code || "");
+  return m ? m[1].toLowerCase() : k.toLowerCase();
+}
+function matches(e, spec) {
+  const parts = spec.split("+"), key = parts.pop();
+  const want = { mod: false, shift: false, alt: false, ctrl: false };
+  for (const p of parts) want[p] = true;
+  const mod = IS_MAC ? e.metaKey : e.ctrlKey;
+  return mod === want.mod && e.shiftKey === want.shift && e.altKey === want.alt &&
+         (IS_MAC ? e.ctrlKey === want.ctrl : true) && keyName(e) === key;
+}
+
+// ---- palette -----------------------------------------------------------------
+let palSel = 0, palItems = [];
+function renderPalette() {
+  const q = $("palIn").value.trim().toLowerCase();
+  const list = $("palList");
+  palItems = ACTIONS.filter((a) => (!a.need || a.need()) && (!q || a.label.toLowerCase().includes(q) || a.id.includes(q)));
+  list.replaceChildren();
+  if (!palItems.length) { const d = document.createElement("div"); d.className = "pal-empty"; d.textContent = "No matching command"; list.append(d); return; }
+  palSel = Math.min(palSel, palItems.length - 1);
+  palItems.forEach((a, i) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "pal-item"; b.setAttribute("role", "option"); b.setAttribute("aria-selected", String(i === palSel));
+    const ic = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    ic.setAttribute("class", "i"); const u = document.createElementNS("http://www.w3.org/2000/svg", "use"); u.setAttribute("href", "#i-" + a.icon); ic.append(u);
+    const t = document.createElement("span"); t.textContent = a.label;
+    b.append(ic, t);
+    const st = a.state && a.state();
+    if (st) { const s = document.createElement("span"); s.className = "state"; s.textContent = st; b.append(s); }
+    else if (a.keys.length) { const k = document.createElement("span"); k.className = "k"; k.append(chips(a.keys[0])); b.append(k); }
+    b.addEventListener("click", () => runPalette(i));
+    b.addEventListener("mousemove", () => { if (palSel !== i) { palSel = i; markPalette(); } });
+    list.append(b);
+  });
+}
+function markPalette() {
+  [...$("palList").children].forEach((c, i) => c.setAttribute("aria-selected", String(i === palSel)));
+  const el = $("palList").children[palSel]; if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
+}
+function runPalette(i) { const a = palItems[i]; $("palette").close(); if (a) a.run(); }
+function openPalette() { const d = $("palette"); if (d.open) return; palSel = 0; $("palIn").value = ""; renderPalette(); d.showModal(); $("palIn").focus(); }
+$("palIn").addEventListener("input", () => { palSel = 0; renderPalette(); });
+$("palIn").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { palSel = Math.min(palItems.length - 1, palSel + 1); markPalette(); e.preventDefault(); }
+  else if (e.key === "ArrowUp") { palSel = Math.max(0, palSel - 1); markPalette(); e.preventDefault(); }
+  else if (e.key === "Enter") { runPalette(palSel); e.preventDefault(); }
+});
+$("palette").addEventListener("click", (e) => { if (e.target === $("palette")) $("palette").close(); });
+
+// ---- menus -------------------------------------------------------------------
+let openMenu = null;
+function closeMenu() { if (openMenu) { openMenu.hidden = true; openMenu = null; } }
+function toggleMenu(menu, anchor) {
+  if (openMenu === menu) return closeMenu();
+  closeMenu();
+  menu.hidden = false; openMenu = menu;
+  const r = anchor.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+  menu.style.left = Math.max(10, Math.min(innerWidth - mw - 10, r.left + r.width / 2 - mw / 2)) + "px";
+  const below = r.bottom + 10 + mh < innerHeight;
+  menu.style.top = (below ? r.bottom + 10 : Math.max(10, r.top - 10 - mh)) + "px";
+}
+document.addEventListener("pointerdown", (e) => {
+  if (openMenu && !openMenu.contains(e.target) && !e.target.closest("[data-act^=menu-]")) closeMenu();
+});
+$("menuKeys").addEventListener("click", (e) => {
+  const c = e.target.closest("[data-combo]");
+  if (c) { keys.combo(c.dataset.combo); closeMenu(); }
+  else if (e.target.closest("[data-act=type-clipboard]")) { closeMenu(); byId["type-clipboard"].run(); }
+});
+
+// ---- settings ----------------------------------------------------------------
 function buildFpsOptions(max) {
-  const sel = $("fps"), opts = [...new Set([5, 10, 15, 24, 30, 60, 120].filter((n) => n < max).concat(max))];
-  sel.replaceChildren(...opts.map((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n + " fps max"; return o; }));
+  const sel = $("setFps"), opts = [...new Set([5, 10, 15, 24, 30, 60, 120].filter((n) => n < max).concat(max))];
+  sel.replaceChildren(...opts.map((n) => { const o = document.createElement("option"); o.value = n; o.textContent = n + " fps"; return o; }));
   S.fps = Math.min(S.fps, max);
   sel.value = opts.includes(S.fps) ? S.fps : max;
 }
+$("setFps").onchange = (e) => { S.fps = parseInt(e.target.value, 10); store.set("fps", S.fps); send("fps " + S.fps); };
+$("setSharp").onchange = (e) => setSharp(e.target.checked);
+$("setGlow").onchange = (e) => setGlow(e.target.checked);
+$("setHud").onchange = (e) => setHud(e.target.checked);
+const MODE_HELP = { chars: "Characters: what you type is what appears", phys: "Physical keys: positions, like a US keyboard" };
+$("setMode").onchange = (e) => { keys.releaseAll(); S.mode = e.target.value; store.set("mode", S.mode); $("modeHelp").textContent = MODE_HELP[S.mode]; };
+$("setCmd").onchange = (e) => { keys.releaseAll(); S.cmdctrl = e.target.value === "1"; store.set("cmdctrl", S.cmdctrl ? "1" : "0"); };
+$("cmdName").textContent = IS_MAC ? "⌘ Command" : "Windows / Meta";
 
-function screenshot() {
-  canvas.toBlob((blob) => {
-    if (!blob) return;
-    const a = document.createElement("a"), d = new Date(), p = (n) => String(n).padStart(2, "0");
-    a.href = URL.createObjectURL(blob);
-    a.download = `netfb-${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
-  }, "image/png");
+// ---- wiring ------------------------------------------------------------------
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-act]");
+  if (!b) return;
+  const act = b.dataset.act;
+  if (act === "menu-keys") return toggleMenu($("menuKeys"), b);
+  if (act === "menu-settings") return toggleMenu($("menuSettings"), b);
+  const a = byId[act];
+  if (a && !b.closest(".menu")) a.run();
+});
+canvas.addEventListener("click", () => { if (S.info && S.info.keyboard && !S.capture) setCapture(true); });
+
+// Tooltips carry the shortcut for each dock action.
+for (const b of document.querySelectorAll(".dock [data-act]")) {
+  const a = byId[b.dataset.act];
+  const name = { "menu-keys": "Send keys", "menu-settings": "Settings" }[b.dataset.act] || (a && a.label);
+  const sc = a && a.keys[0];
+  if (name) b.dataset.tip = sc ? `${name}  ·  ${labelText(sc)}` : name;
 }
 
-function fullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen();
-  else if (stage.requestFullscreen) stage.requestFullscreen();
-}
-
-$("sFit").onclick = () => setScale("fit");
-$("s1x").onclick = () => setScale("1x");
-$("s2x").onclick = () => setScale("2x");
-$("sharp").onclick = () => setSharp(!S.sharp);
-$("pause").onclick = togglePause;
-$("refresh").onclick = () => send("full");
-$("shot").onclick = screenshot;
-$("full").onclick = fullscreen;
-$("fps").onchange = (e) => { S.fps = parseInt(e.target.value, 10); store.set("fps", S.fps); send("fps " + S.fps); };
-
-document.addEventListener("keydown", (e) => {
-  if (e.ctrlKey || e.metaKey || e.altKey || S.capture || $("auth").open) return;
-  if (e.target instanceof HTMLSelectElement) return;
-  const k = e.key.toLowerCase();
-  const act = { " ": togglePause, f: fullscreen, s: screenshot, r: () => send("full"), p: () => setSharp(!S.sharp),
-                1: () => setScale("fit"), 2: () => setScale("1x"), 3: () => setScale("2x") }[k];
-  if (act) { e.preventDefault(); act(); }
+addEventListener("keydown", (e) => {
+  if ($("palette").open || $("auth").open) return;
+  if (S.capture) { if (keys.handle(e, true)) { e.preventDefault(); e.stopPropagation(); } return; }
+  if (e.target instanceof HTMLSelectElement || e.target instanceof HTMLInputElement) return;
+  if (e.key === "Escape" && openMenu) { closeMenu(); return; }
+  if (e.ctrlKey && e.altKey && e.code === "KeyK") { e.preventDefault(); setCapture(true); return; }
+  for (const a of ACTIONS) {
+    if (a.need && !a.need()) continue;
+    if (a.keys.some((s) => matches(e, s))) { e.preventDefault(); a.run(); return; }
+  }
+}, true);
+addEventListener("keyup", (e) => {
+  if (S.capture && !$("palette").open && keys.handle(e, false)) { e.preventDefault(); e.stopPropagation(); }
+}, true);
+addEventListener("blur", () => keys.releaseAll());
+document.addEventListener("visibilitychange", () => { if (document.hidden) keys.releaseAll(); });
+document.addEventListener("paste", (e) => {
+  if (!S.capture) return;
+  e.preventDefault();
+  const t = e.clipboardData && e.clipboardData.getData("text");
+  if (t) keys.type(t);
 });
 
+// ---- idle chrome: the dock and HUD fade away while you work ------------------
+let idleT = 0;
+function wake() {
+  for (const id of ["dock", "hud", "kbdchip"]) $(id).classList.remove("idle");
+  clearTimeout(idleT);
+  if (S.capture || document.fullscreenElement) {
+    idleT = setTimeout(() => { if (!openMenu) for (const id of ["dock", "hud", "kbdchip"]) $(id).classList.add("idle"); }, 2600);
+  }
+}
+addEventListener("pointermove", wake);
+addEventListener("pointerdown", wake);
+document.addEventListener("fullscreenchange", () => {
+  stage.classList.toggle("fs", document.fullscreenElement === stage);
+  if (S.capture) keyboardLock(true);
+  layout(); wake();
+});
 new ResizeObserver(layout).observe(stage);
-document.addEventListener("fullscreenchange", layout);
 
-// ---- stats ---------------------------------------------------------------
+// ---- stats, sparkline, ambient glow ------------------------------------------
+const spark = $("spark"), sctx = spark.getContext("2d");
+function drawSpark() {
+  const w = spark.width, h = spark.height, a = S.hist, mx = Math.max(1024, ...a);
+  const cs = getComputedStyle(document.documentElement);
+  sctx.clearRect(0, 0, w, h);
+  const grad = sctx.createLinearGradient(0, 0, w, 0);
+  grad.addColorStop(0, cs.getPropertyValue("--accent2").trim()); grad.addColorStop(1, cs.getPropertyValue("--accent").trim());
+  sctx.lineWidth = 2.5; sctx.lineJoin = "round"; sctx.strokeStyle = grad;
+  sctx.beginPath();
+  a.forEach((v, i) => { const x = (i / (a.length - 1)) * (w - 4) + 2, y = h - 4 - (v / mx) * (h - 8); i ? sctx.lineTo(x, y) : sctx.moveTo(x, y); });
+  sctx.stroke();
+}
 setInterval(() => {
-  $("fpsNow").textContent = S.frames; S.frames = 0;
-  $("rate").textContent = fmtBytes(S.bytes) + "/s"; S.bytes = 0;
-  S.rawTotal += S.rawBytes; S.rawBytes = 0;
-  $("total").textContent = fmtBytes(S.total) + " received" + (S.total ? ` (×${(S.rawTotal / S.total).toFixed(1)} compressed)` : "");
+  S.hist.push(S.bytes); S.hist.shift();
+  $("hFps").textContent = S.frames; S.frames = 0;
+  $("hRate").textContent = fmtBytes(S.bytes) + "/s";
+  S.rawTotal += S.raw; S.raw = 0; S.bytes = 0;
+  $("hRtt").textContent = S.rtt === null ? "—" : S.rtt + " ms";
+  $("hRatio").textContent = S.total ? "×" + (S.rawTotal / S.total).toFixed(S.rawTotal / S.total >= 10 ? 0 : 1) : "—";
+  if (S.hud) drawSpark();
+  send("ping " + (performance.now() | 0));
 }, 1000);
+setInterval(() => { if (S.glow && S.info && !document.hidden) glowCtx.drawImage(canvas, 0, 0, glowCv.width, glowCv.height); }, 250);
 
-// ---- boot ----------------------------------------------------------------
+// ---- boot --------------------------------------------------------------------
 S.token = initToken();
-setScale(S.scale); setSharp(S.sharp);
+$("setSharp").checked = S.sharp; $("setGlow").checked = S.glow; $("setHud").checked = S.hud;
+$("setMode").value = S.mode; $("setCmd").value = S.cmdctrl ? "1" : "0"; $("modeHelp").textContent = MODE_HELP[S.mode];
+document.body.classList.toggle("noglow", !S.glow); $("hud").hidden = !S.hud;
+setScale(S.scale);
 connect();
 })();
 </script>
