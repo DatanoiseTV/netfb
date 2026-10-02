@@ -417,3 +417,4 @@ module_exit(netfb_exit);
 MODULE_DESCRIPTION("fbdev framebuffer exported over HTTP/WebSocket with a web UI");
 MODULE_AUTHOR("DatanoiseTV");
 MODULE_LICENSE("GPL");
+MODULE_VERSION("0.1.0");

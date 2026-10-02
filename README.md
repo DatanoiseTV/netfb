@@ -1,15 +1,67 @@
 # netfb
 
-A Linux kernel module that registers a virtual fbdev framebuffer (`/dev/fbN`) and
-serves it over HTTP/WebSocket, with a web UI that shows the screen live and can
-send keyboard input back. Anything that draws to a framebuffer shows up in the
-browser, including the kernel's own framebuffer console.
+A Linux kernel module that creates a virtual framebuffer (`/dev/fbN`) and serves it
+to a web browser over HTTP and WebSocket, with keyboard input going back. The
+framebuffer console, or anything else that draws through the fbdev interface, shows
+up live in a browser tab, with no VNC server, X server or user-space daemon.
+
+![netfb showing a Linux console in the browser](docs/img/hero.png)
+
+## What it is for
+
+- **Console of a headless box or VM.** The kernel's framebuffer console (fbcon) in a
+  browser tab, with a working keyboard, colours and virtual console switching
+  (Ctrl+Alt+F1..F7). It runs as soon as the module is loaded, so it works in an
+  initramfs, on a board without a display, or in a VM that has no graphics device.
+- **Applications that draw to the framebuffer.** Anything that writes to `/dev/fbN`
+  with `write()` or `mmap()` can be pointed at the netfb device and watched remotely.
+  Tested here: fbcon, `write()` and `mmap()` drawing. Not tested, but they use the same
+  interface: fbdev back ends of SDL and LVGL, Xorg's `fbdev` driver, `fbi`.
+- **Screenshots and video of an embedded UI.** The page can save or copy a PNG and
+  record WebM. The wire format is documented below, so a script can fetch frames
+  directly; `test/browser.py` drives the page from headless Chrome.
+- **Framebuffer driver and kernel work without hardware.** A framebuffer with deferred
+  I/O, damage tracking and an input device, small enough to read in an evening
+  (about 1700 lines of C). It was developed against QEMU.
+
+What it is not:
+
+- It is a separate virtual framebuffer. It does not mirror an existing physical
+  `/dev/fb0`; point the application, or fbcon (`con2fbmap`), at the netfb device.
+- It is not a replacement for VNC or RDP. There is no mouse input, no clipboard from
+  the machine to the browser, no audio, and no TLS (see the security model).
+
+## Quick start
+
+Build against the target kernel's headers and load it:
+
+    make KDIR=/path/to/kernel/build
+    sudo insmod netfb.ko width=1024 height=768 keyboard=1 \
+         bind_addr=0.0.0.0 token=$(openssl rand -hex 16)
+
+then open `http://<host>:8080/?token=<token>`. Without `bind_addr` it listens on
+127.0.0.1 only and needs no token. The kernel log says which `/dev/fbN` was created:
+
+    netfb: fb0: 1024x768@32, serving on http://0.0.0.0:8080/ (token required) keyboard input ENABLED
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Command palette](docs/img/palette.png) | ![Send keys menu](docs/img/send-keys.png) |
+| Command palette (Cmd/Ctrl+K) | Send keys: Ctrl+Alt+Del, Alt+Tab, console switching |
+| ![Light theme](docs/img/light.png) | ![Phone layout](docs/img/mobile.png) |
+| Light theme (follows the system) | Phone layout |
+
+## Features
 
 - Drawing by `write()`, `mmap()` and fbcon is tracked per row (deferred I/O plus
   the fbdev damage hooks); each client is sent only the rows that changed.
 - Pixel messages are LZ4-compressed in the kernel (raw when that is smaller).
   A mostly-black console frame is 1.92 MB raw and about 32 KB on the wire.
 - A slow client sees a lower frame rate; nothing is queued per client.
+- Key press to changed pixels is 1-2 ms on a local link (measured through QEMU's
+  user-mode network).
 - Optional keyboard input through a virtual input device (`keyboard=1`).
 - The web UI is one gzipped HTML file embedded in the module: no files to install.
 
@@ -27,11 +79,7 @@ Kernel configuration required: `CONFIG_FB`, `CONFIG_FB_DEFERRED_IO`,
 Builds warning-free against Linux 6.12, 6.17 and 6.19 (arm64). The end-to-end test
 ran on 6.12 only.
 
-## Use
-
-    insmod netfb.ko width=1024 height=768 bpp=32 port=8080
-
-then open `http://127.0.0.1:8080/`. Parameters:
+## Parameters
 
 | parameter       | default     | meaning                                                         |
 |-----------------|-------------|-----------------------------------------------------------------|
@@ -42,7 +90,7 @@ then open `http://127.0.0.1:8080/`. Parameters:
 | `token`         | none        | access token, 16-128 chars of `[A-Za-z0-9._~-]`                 |
 | `allow_insecure`| 0           | allow a non-loopback `bind_addr` without a token                |
 | `keyboard`      | 0           | create an input device and accept key events from the UI        |
-| `max_clients`   | 8           | concurrent connections, 1..64                                   |
+| `max_clients`   | 8           | concurrent connections, 1..64 (each open tab is one)            |
 | `max_fps`       | 30          | per-client update rate cap, 1..120                              |
 
 With a token, open `http://host:8080/?token=...` (the UI removes it from the URL),
@@ -122,16 +170,23 @@ Connected clients receive a close frame (1001).
 it from the host with a raw HTTP/WebSocket client: auth, Origin, malformed input,
 partial updates, `write()` and `mmap()` drawing, pause, compression, keyboard
 latency, held-key release, connection limits, unload with a client attached, and a
-scan of the console for kernel splats. `test/browser.py` loads the real UI in headless Chrome and checks it goes live without
-console errors; `test/browser_keys.py` drives it with real key events (layouts, macOS
+scan of the console for kernel splats. `test/browser.py` loads the real UI in
+headless Chrome and checks it goes live without console errors;
+`test/browser_keys.py` drives it with real key events (layouts, macOS
 Cmd/Option/Caps Lock behaviour, paste, touch keyboard) and checks the exact key codes
 sent. Both need Chrome (`CHROME=` overrides the path) and a server loaded with
 `keyboard=1`; the Cmd cases need a Mac. `test/build-guest.sh` builds the initramfs
 inside a container with a built kernel tree; `test/guest/init-demo` is a guest
-with a root shell on the framebuffer console.
+with a root shell on the framebuffer console, which is how the screenshots above
+were taken.
 
-Known gaps: no kmemleak run, only arm64 exercised, no mouse input, IPv4 only.
+Known gaps:
+
+- The KASAN/lockdep run (debug kernel) covers the code up to the LZ4 change. The later
+  changes (the `sk_data_ready` wake-up that cuts input latency, `ping`) passed the
+  whole suite on a non-debug kernel only.
+- No kmemleak run, only arm64 exercised, no mouse input, IPv4 only.
 
 ## License
 
-GPL-2.0-only (see the SPDX headers).
+GPL-2.0-only. See `LICENSE`.
